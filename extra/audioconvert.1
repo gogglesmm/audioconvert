@@ -1,0 +1,81 @@
+.TH audioconvert 1 "28 January 2011"
+.SH NAME
+audioconvert \- An audio-file copying and conversion tool.
+.SH SYNOPSIS
+.B audioconvert
+[options] source [destination]
+.SH INTRODUCTION
+Audioconvert is a convenient tool to convert audio files.
+Encoder and decoder options may be set in the configuration file.
+.SH OPTIONS
+.I Output Action
+
+For each supported file type a desired action may be specified. The following actions are supported:
+.LP
+.RS
+flac \- Convert source file to flac.
+
+ ogg \- Convert source file to ogg vorbis.
+
+ mp3 \- Convert source file to mp3.
+
+ mp4 \- Convert source file to mp4.
+
+ mpc \- Convert source file to Musepack.
+
+copy \- Copy source without conversion to destination
+
+none \- Do nothing. Source file is skipped. (default)
+.RE
+.LP
+The desired action can be specified using the following command line arguments:
+.RS
+.TP
+.BI \-\-flac= ACTION
+Set desired ACTION for flac files
+.TP
+.BI \-\-ogg= TYPE
+Set desired ACTION for ogg vorbis files
+.TP
+.BI \-\-mp3= ACTION
+Set desired ACTION for mp3 files
+.TP
+.BI \-\-mp4= ACTION
+Set desired ACTION for mp4 files
+.TP
+.BI \-\-mpc= ACTION
+Set desired ACTIONE for mpc files
+.TP
+.BI \-\-all= ACTION
+Set desired output for all file types. By specifying this first you can use this to set a default ACTION.
+.LP
+.RE
+.I Misc
+.RS
+.TP
+.B \-n, \-\-dry-run
+Print operations instead of performing
+.TP
+.B \-q, \-\-quiet
+Suppress Output Messages
+.TP
+.B \-\-overwrite
+Force overwriting existing files
+.RE
+.I Other
+.RS
+.TP
+.B \-h, \-\-help
+Display list of options
+.TP
+.B \-v, \-\-version
+Display version information
+.RE
+.LP
+.SH FILES
+.TP
+.I $(XDG_CONFIG_DIRS)/audioconvert/config.rc
+Configuration File
+.LP
+.SH AUTHOR
+Sander Jansen <s.jansen@gmail.com>

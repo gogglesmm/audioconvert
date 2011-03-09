@@ -1,0 +1,7 @@
+0.2.1 (Feb 8,2010)
+  - Fix memory leak in directory traverser (fox-1.6 issue only)
+  - Make sure default config gets written even if no operation is specified.
+  - Add available actions to help output.
+
+0.2.0 (Feb 7,2010)
+  - Initial Release

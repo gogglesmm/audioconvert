@@ -43,7 +43,8 @@ all: $(AC_BIN)
 AC_SRCFILES := src/main.cpp \
 src/AudioTools.cpp \
 src/AudioConvert.cpp \
-src/AudioTags.cpp
+src/AudioTags.cpp \
+src/AudioFilename.cpp
 
 
 AC_OBJECTS := $(patsubst %.cpp,%$(OBJEXT),$(AC_SRCFILES))

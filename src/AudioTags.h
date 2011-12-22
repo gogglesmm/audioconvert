@@ -19,23 +19,35 @@
 #ifndef GM_TRACK_H
 #define GM_TRACK_H
 
+/// Album number consists of a disc number + track number
+#define GMALBUMNO(disc,track) ((((FX::FXuint)(track))&0xffff) | (((FX::FXuint)(disc))<<16))
+
+/// Get the disc number from a album no.
+#define GMDISCNO(s) ((FX::FXushort)(((s)>>16)&0xffff))
+
+/// Get the track number from a album no.
+#define GMTRACKNO(s) ((FX::FXushort)((s)&0xffff))
+
 class GMTrack{
 public:
-  FXString title;
-  FXString artist;
-  FXString album;
-  FXString album_artist;
-  FXString composer;
-  FXString conductor;
-  FXStringList tags;
-  FXint    year;
-  FXint 	 no;
-  FXdouble album_gain;
-  FXdouble album_peak;
-  FXdouble track_gain;
-  FXdouble track_peak;
+  FXString      title;
+  FXString      artist;
+  FXString      album;
+  FXString      album_artist;
+  FXString      composer;
+  FXString      conductor;
+  FXStringList  tags;
+  FXint         year;
+  FXint 	    no;
+  FXuint        rating;
 public:
   GMTrack();
+
+  /// Clear the track
+  void clear();
+  
+  /// Adopt from track
+  void adopt(GMTrack &);
 
   /// Get track number
   FXushort getTrackNumber() const { return (FXushort)(no&0xffff); }
@@ -49,14 +61,14 @@ public:
   /// Get disc number
   FXushort getDiscNumber() const { return (FXushort)(no>>16); }
 
+
   /// Load from tag in given filename. Note that mrl is not set
   FXbool loadTag(const FXString & filename);
 
   /// Save to tag in given filename. Note that mrl is not set
   FXbool saveTag(const FXString & filename,FXuint opts=0);
-
-  void clear();
   };
+
 
 class GMCover;
 typedef FXArray<GMCover*> GMCoverList;
@@ -87,21 +99,28 @@ public:
     PublisherLogo     = 20
     };
 public:
-  FXuchar*   data;
-  FXival    data_size;
-  FXuint    type;
+  FXuchar*  data;
+  FXuval    len;
   FXString  description;
-  FXString  mime;
+  FXuint    type;
 public:
   GMCover();
-  GMCover(const FXuchar * d,FXival sz,const FXString & mimetype,FXuint t=GMCover::Other,const FXString & label=FXString::null);
+  GMCover(const void * data, FXuval len,FXuint t=GMCover::Other,const FXString & label=FXString::null,FXbool owned=false);
   ~GMCover();
+
+  /// Return file extension for image.
+  FXString fileExtension() const;
+
+  FXbool save(const FXString & path);
 public:
   static FXint fromTag(const FXString & mrl,GMCoverList & list);
-  
-  void save(const FXString & filename);
-  };
 
+  static GMCover * fromTag(const FXString & mrl);
+
+  static GMCover * fromPath(const FXString & mrl);
+
+  static GMCover * fromFile(const FXString & file);
+  };
 
 #endif
 

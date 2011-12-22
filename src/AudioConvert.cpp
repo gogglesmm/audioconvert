@@ -18,8 +18,9 @@
 ********************************************************************************/
 #include "fox.h"
 #include "AudioTools.h"
-#include "AudioConvert.h"
 #include "AudioTags.h"
+#include "AudioConvert.h"
+#include "AudioFilename.h"
 
 /*
 
@@ -50,13 +51,18 @@ FXbool gm_make_path(const FXString & path,FXuint perm=FXIO::OwnerFull|FXIO::Grou
 
 
 
+
+
+
+
+
 enum {
   STATUS_ERROR=0,
   STATUS_OK=1
   };
 
 
-AudioConverter::AudioConverter() : dryrun(false),overwrite(false),out_time(0) {
+AudioConverter::AudioConverter() : dryrun(false),overwrite(false),rename(false),format_codec(NULL),out_time(0) {
   mode[FILE_FLAC]=FILE_NONE;
   mode[FILE_MP3]=FILE_NONE;
   mode[FILE_OGG]=FILE_NONE;
@@ -64,9 +70,11 @@ AudioConverter::AudioConverter() : dryrun(false),overwrite(false),out_time(0) {
   mode[FILE_MPC]=FILE_NONE;
   tmp_file=FXSystem::getTempDirectory() + PATHSEPSTRING + "audioconvert.wav";
   cvr_file="cover.jpg";
+  format_strip="\'\\#~!\"$&();<>|`^*?[]/.:";
   }
 
 AudioConverter::~AudioConverter(){
+  delete format_codec;
   }
 
 
@@ -131,6 +139,20 @@ FXbool AudioConverter::parse(int argc,FXchar * argv[]) {
       overwrite=true;
     else if (compare(argv[i],"--quiet")==0 || compare(argv[i],"-q")==0)
       tools.quiet();
+    else if (compare(argv[i],"--rename")==0) 
+      rename=true;        
+    else if (compare(argv[i],"--format=",9)==0) {
+      format = FXString(argv[i]).after('=');
+      }
+    else if (compare(argv[i],"--format-strip=",15)==0) {
+      format_strip = FXString(argv[i]).after('=');
+      }
+    else if (compare(argv[i],"--format-encoding=",18)==0) {
+      if (!GMFilename::parsecodec(FXString(argv[i]).after('='),format_codec)) {
+        fxmessage("Error: Invalid format encoding %s",argv[i]);
+        return false;
+        }
+      }
     else {
       nargs++;
 
@@ -335,14 +357,55 @@ FXbool AudioConverter::update_destination(const FXString & in,const FXString & o
 
 FXbool AudioConverter::check_destination(const FXString & in,const FXString & out){
   if (in==out) {
-    fxmessage("Error: source and destination are the same: %s\n",out.text());
+    fxmessage("Error: source and destination are the same %s\n",out.text());
     return false;
     }
   return true;
   }
 
+
+FXbool AudioConverter::format_destination(const FXString & in,FXString & out,FXuint to) {
+  if (rename) {
+
+    if (!src_tag.loadTag(in)) {
+      fxmessage("Error: failed to load tag from file %s\n",in.text());  
+      return false;
+      }
+
+    FXString path = FXPath::expand(format);
+
+    // Make sure its absolute
+    if (!FXPath::isAbsolute(path))
+        path = FXPath::absolute(cur_path,path);
+
+    // Simplify
+    path = FXPath::simplify(path);
+
+    // Format name based on tag
+    out  = GMFilename::format(src_tag,path,format_strip,format_options,format_codec);
+
+    // Append file extension
+    if (to==FILE_COPY)
+      out += "." + FXPath::extension(in);
+    else
+      out += tools.extension(to);  
+
+    }
+  else if (to==FILE_COPY) {
+    out = cur_path + PATHSEPSTRING + FXPath::name(in);
+    }
+  else {
+    out = cur_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
+    }
+ return true;
+ }
+
+
 FXuint AudioConverter::convert_recode(FXuint,FXuint to,const FXString & in) {
-  FXString out = cur_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
+  FXString out;
+
+  // Get the destination filename
+  if (!format_destination(in,out,to)) return STATUS_ERROR;
 
   /// Check if destination exists and needs updating
   if (!update_destination(in,out)) return STATUS_OK;
@@ -362,7 +425,10 @@ FXuint AudioConverter::convert_recode(FXuint,FXuint to,const FXString & in) {
 
 
 FXuint AudioConverter::convert_direct(FXuint from,FXuint to,const FXString & in) {
-  FXString out = cur_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
+  FXString out;
+
+  // Get the destination filename
+  if (!format_destination(in,out,to)) return STATUS_ERROR;
 
   /// Make sure in and out are not the same
   if (!check_destination(in,out)) return STATUS_ERROR;
@@ -394,9 +460,10 @@ FXuint AudioConverter::convert_direct(FXuint from,FXuint to,const FXString & in)
 
 
 FXuint AudioConverter::convert_indirect(FXuint from,FXuint to,const FXString & in) {
-  GMTrack info;
+  FXString out;
 
-  FXString out = cur_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
+  // Get the destination filename
+  if (!format_destination(in,out,to)) return STATUS_ERROR;
 
   /// Make sure in and out are not the same
   if (!check_destination(in,out)) return STATUS_ERROR;
@@ -474,14 +541,16 @@ FXbool AudioConverter::copy_files(const FXString & in,const FXString & out) cons
   return true;
   }
 
-FXbool AudioConverter::copy_tags(const FXString & in,const FXString & out) const {
-  GMTrack src_tag;
+FXbool AudioConverter::copy_tags(const FXString & in,const FXString & out) {
   GMTrack dst_tag;
   if (dryrun) {
     fxmessage("copy tags\n");
     }
   else {
-    src_tag.loadTag(in);
+    // In case of renames, we already loaded the tag
+    if (!rename) 
+        src_tag.loadTag(in);
+
     dst_tag.loadTag(out);
     if (src_tag.title!=dst_tag.title){
       src_tag.saveTag(out);

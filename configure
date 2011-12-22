@@ -13,6 +13,7 @@ ACC_PATCH=0
 # Settings
 #---------------------------
 DEBUG=0
+FOX17=0
 
 
 # Default Compiler Settings
@@ -54,6 +55,9 @@ for arg in $@; do
       ;;
     --prefix=*)
       PREFIX=${arg#*=}
+      ;;
+    --with-fox17*)
+      FOX17=1  
       ;;
     --fox-prefix=*)
       FOX_PREFIX=${arg#*=}
@@ -118,11 +122,17 @@ echo "#define BUILD_TIME __TIME__"              >> src/acconfig.h
 
 # Find Libraries
 #------------------------
-add_required_package "fox >= 1.6" "fox"
-add_required_package "taglib >= 1.6.3" "taglib"
-
+if [ $FOX17 -eq 1 ] ; then
+  add_required_package "fox17 >= 1.7" "fox"
+else
+  add_required_package "fox >= 1.6" "fox"
+fi
 check_reswrap
 check_foxversion
+
+
+add_required_package "taglib >= 1.6.3" "taglib"
+
 
 PKG_LDFLAGS=$(pkg-config --libs-only-L $PACKAGES)
 PKG_LIBS=$(pkg-config --libs-only-l --libs-only-other $PACKAGES)

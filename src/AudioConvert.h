@@ -28,10 +28,16 @@ class AudioConverter {
 #endif
 protected: /// Settings
   AudioTools tools;
-  FXbool dryrun;        // Simulated run.
-  FXbool overwrite;     // Overwrite existing file
+  FXbool dryrun;                // Simulated run.
+  FXbool overwrite;             // Overwrite existing file
+  FXbool rename;                // Rename output file
+  FXString format;              // File format template
+  FXString format_strip;        // Characters to strip
+  FXuint   format_options;      // Additional Format Options   
+  FXTextCodec* format_codec;    // File format encoding  
   FXuint mode[FILE_NTYPES];
 protected: // State
+  GMTrack  src_tag;   // Source Tag
   FXString src_path;  // Source Path
   FXString dst_path;  // Destination Path
   FXString cur_path;  // Current Path
@@ -51,8 +57,9 @@ protected:
   FXbool make_path(const FXString & path) const;
   FXbool check_destination(const FXString & src,const FXString & dst);
   FXbool update_destination(const FXString & src,const FXString & dst);
+  FXbool format_destination(const FXString & in,FXString & out,FXuint to);
 
-  FXbool copy_tags(const FXString & src,const FXString & dst) const;
+  FXbool copy_tags(const FXString & src,const FXString & dst);
   FXbool copy_files(const FXString & src,const FXString & dst) const;
   FXbool copy_folder_cover(FXuint from,FXuint to,const FXString & in);
 

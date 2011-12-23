@@ -31,21 +31,20 @@ protected: /// Settings
   FXbool dryrun;                // Simulated run.
   FXbool overwrite;             // Overwrite existing file
   FXbool rename;                // Rename output file
-  FXString format;              // File format template
+  FXString format_template;     // File format template
   FXString format_strip;        // Characters to strip
   FXuint   format_options;      // Additional Format Options   
   FXTextCodec* format_codec;    // File format encoding  
   FXuint mode[FILE_NTYPES];
 protected: // State
-  GMTrack  src_tag;   // Source Tag
-  FXString src_path;  // Source Path
-  FXString dst_path;  // Destination Path
-  FXString cur_path;  // Current Path
-  FXString tmp_file;  // Temp File
-  FXString cvr_file;  // cover file name
-  FXTime   out_time;  // Timestamp of out file
+  GMTrack  src_tag;     // Source Tag
+  FXString src_root;    // Source Root Path
+  FXString dst_root;    // Destination Root Path
+  FXString out_path;    // Output Path (set by format_destination)
+  FXString tmp_file;    // Temp File
+  FXTime   out_time;    // Timestamp of out file
   FXTime   start_time;  // Timestamp when we started
-  FXTime   cvr_time;  // Timestamp for cover file
+  FXTime   cvr_time;    // Timestamp for cover file
   FXuint   status;
 protected:
   FXuint copy(const FXString & path);

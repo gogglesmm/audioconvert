@@ -1,4 +1,7 @@
 0.3.0 (Dec 25,2011)
+  - Fix issue where incorrect output directory was used.
+  - Call external tools directly instead of through shell.
+  - Allow tag based filename formatting.   
 
 0.2.1 (Feb 8,2010)
   - Fix memory leak in directory traverser (fox-1.6 issue only)

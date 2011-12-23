@@ -5,11 +5,15 @@ audioconvert \- An audio-file copying and conversion tool.
 .B audioconvert
 [options] source [destination]
 .SH INTRODUCTION
-Audioconvert is a convenient tool to convert audio files.
-Encoder and decoder options may be set in the configuration file.
+Audioconvert is a convenient tool to batch process audio files. It was designed to be able to quickly convert files found in the 
+.B source 
+directory tree and store them with the same relative path in the
+.B destination
+directory. A typical use case is where you have your music files in a lossless format (FLAC) and need to have them available for a portable device in a lossy format (Ogg Vorbis).
+.PP
+For each file type you can set the desired action to be performed (or to be ignored) allow for mixed operations. For example, If your portable device supports ogg and mp3, you can choose to convert flac to ogg vorbis and copy the mp3 files without conversion.
 .SH OPTIONS
 .I Output Action
-
 For each supported file type a desired action may be specified. The following actions are supported:
 .LP
 .RS
@@ -72,6 +76,8 @@ Display list of options
 Display version information
 .RE
 .LP
+.SH EXAMPLES
+audioconvert --flac=ogg /home/foobar/input /home/foobar/output
 .SH FILES
 .TP
 .I $(XDG_CONFIG_DIRS)/audioconvert/config.rc

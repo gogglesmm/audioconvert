@@ -74,6 +74,7 @@ protected:
 protected:
   ToolConfig tools[NTOOLS];
 protected:
+  FXbool runTool(FXuint type,const FXString & input,const FXString & output) const;
   FXbool run(const FXString & cmd) const;
 public:
   AudioTools();
@@ -91,8 +92,8 @@ public:
   // Set Quiet Operation
   void quiet(FXbool enable=true);
 
-  void load_rc(const FXString & filename);
-  void init_rc(const FXString & filename);
+  void load_rc(FXSettings&);
+  void init_rc(FILE*);
 
   };
 #endif

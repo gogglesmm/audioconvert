@@ -48,14 +48,6 @@ FXbool gm_make_path(const FXString & path,FXuint perm=FXIO::OwnerFull|FXIO::Grou
 #endif
   }
 
-
-
-
-
-
-
-
-
 enum {
   STATUS_ERROR=0,
   STATUS_OK=1
@@ -69,7 +61,7 @@ AudioConverter::AudioConverter() : dryrun(false),overwrite(false),rename(false),
   mode[FILE_MP4]=FILE_NONE;
   mode[FILE_MPC]=FILE_NONE;
   tmp_file=FXSystem::getTempDirectory() + PATHSEPSTRING + "audioconvert.wav";
-  cvr_file="cover.jpg";
+  format_template="%P/%A?d< - disc %d>/%N %T";
   format_strip="\'\\#~!\"$&();<>|`^*?[]/.:";
   }
 
@@ -95,7 +87,7 @@ FXuint AudioConverter::parse_mode(const FXchar * cstr){
   else if (comparecase(m,"none")==0 || comparecase(m,"off")==0)
     return FILE_NONE;
   else{
-    fxmessage("Error: Invalid argument \"%s\"\n",cstr);
+    fxmessage("Error: Invalid conversion specified \"%s\"\n",cstr);
     return FILE_INVALID;
     }
   }
@@ -141,17 +133,28 @@ FXbool AudioConverter::parse(int argc,FXchar * argv[]) {
       tools.quiet();
     else if (compare(argv[i],"--rename")==0) 
       rename=true;        
-    else if (compare(argv[i],"--format=",9)==0) {
-      format = FXString(argv[i]).after('=');
+    else if (compare(argv[i],"--format-template=",9)==0) {
+      rename=true;  
+      format_template = FXString(argv[i]).after('=');
       }
     else if (compare(argv[i],"--format-strip=",15)==0) {
+      rename=true;
       format_strip = FXString(argv[i]).after('=');
       }
     else if (compare(argv[i],"--format-encoding=",18)==0) {
+      rename=true;
       if (!GMFilename::parsecodec(FXString(argv[i]).after('='),format_codec)) {
         fxmessage("Error: Invalid format encoding %s",argv[i]);
         return false;
         }
+      }
+    else if (compare(argv[i],"--format-no-spaces")==0) {
+      rename=true;
+      format_options|=GMFilename::NOSPACES;
+      }
+    else if (compare(argv[i],"--format-lowercase")==0) {
+      rename=true;  
+      format_options|=GMFilename::LOWERCASE;
       }
     else {
       nargs++;
@@ -167,35 +170,35 @@ FXbool AudioConverter::parse(int argc,FXchar * argv[]) {
         }
 
       if (nargs==1)
-        src_path.adopt(path);
+        src_root.adopt(path);
       else
-        dst_path.adopt(path);
+        dst_root.adopt(path);
       }
     }
 
   /// Time to read the configuration file.
   parse_config();
 
-  if (src_path.empty()) {
+  if (src_root.empty()) {
     fxmessage("Error: Missing argument source directory.\n");
     return false;
     }
 
-  if (!FXStat::exists(src_path)){
+  if (!FXStat::exists(src_root)){
     fxmessage("Error: Source directory doesn't exist.\n");
     return false;
     }
 
-  if (!FXStat::isDirectory(src_path)){
+  if (!FXStat::isDirectory(src_root)){
     fxmessage("Error: source is not a directory\n");
     return false;
     }
 
-  if (dst_path.empty()) {
-    dst_path=src_path;
+  if (dst_root.empty()) {
+    dst_root=src_root;
     }
 
-  if (dst_path==src_path ){
+  if (dst_root==src_root ){
     fxmessage("Destination same as source! Continue? ");
     int answer = getc(stdin);
     if (!(answer=='y' || answer=='Y')) {
@@ -205,7 +208,7 @@ FXbool AudioConverter::parse(int argc,FXchar * argv[]) {
     fxmessage("\n");
     }
 
-  if (FXStat::exists(dst_path) && !FXStat::isDirectory(dst_path)){
+  if (FXStat::exists(dst_root) && !FXStat::isDirectory(dst_root)){
     fxmessage("Error: destination is not a directory\n");
     return false;
     }
@@ -242,13 +245,29 @@ void AudioConverter::parse_config() {
 
   if (!config.empty()){
     fxmessage("Found config: %s\n",config.text());
-    tools.load_rc(config);
+    FXSettings settings;
+#if FOXVERSION < FXVERSION(1,7,25)  
+    if (settings.parseFile(config,true)) {
+#else
+    if (settings.parseFile(config)) {
+#endif
+      tools.load_rc(settings);
+      format_template = settings.readStringEntry("format","template",format_template.text());
+      format_strip    = settings.readStringEntry("format","strip",format_strip.text());
+      }
     }
   else {
     config = FXPath::absolute(FXPath::expand(xdg_config_home),config_file);
     if (!gm_make_path(FXPath::directory(config))) return;
     fxmessage("Creating config: %s\n",config.text());
-    tools.init_rc(config);
+    FILE * fp = fopen(config.text(),"w");
+    if (fp) {
+      fprintf(fp,"#[format]\n");
+      fprintf(fp,"#template=%s\n",format_template.text());
+      fprintf(fp,"#strip=%s\n\n",format_strip.text());
+      tools.init_rc(fp);
+      fclose(fp);
+      }
     }
   }
 
@@ -296,29 +315,21 @@ FXuint AudioConverter::traverse(const FXString & path) {
 
 
 FXint AudioConverter::run() {
-  FXASSERT(!src_path.empty());
-  FXASSERT(!dst_path.empty());
+  FXASSERT(!src_root.empty());
+  FXASSERT(!dst_root.empty());
   status=STATUS_OK;
   start_time=FXThread::time();
-  if (traverse(src_path)==0)
+  if (traverse(src_root)==0)
     return -1;
   else
     return 0;
   }
 
-FXuint AudioConverter::enter(const FXString & path) {
-  if (path!=src_path)
-    cur_path = FXPath::absolute(dst_path,FXPath::relative(src_path,path));
-  else
-    cur_path = dst_path;
-
-  if (!cvr_file.empty())
-    cvr_time = FXStat::modified(cur_path+PATHSEPSTRING+cvr_file);
-
+FXuint AudioConverter::enter(const FXString & /*path*/) {
   return status;
   }
 
-FXuint AudioConverter::leave(const FXString &) {
+FXuint AudioConverter::leave(const FXString & /*path*/) {
   return status;
   }
 
@@ -366,17 +377,16 @@ FXbool AudioConverter::check_destination(const FXString & in,const FXString & ou
 
 FXbool AudioConverter::format_destination(const FXString & in,FXString & out,FXuint to) {
   if (rename) {
-
     if (!src_tag.loadTag(in)) {
       fxmessage("Error: failed to load tag from file %s\n",in.text());  
       return false;
       }
 
-    FXString path = FXPath::expand(format);
+    FXString path = FXPath::expand(format_template);
 
     // Make sure its absolute
     if (!FXPath::isAbsolute(path))
-        path = FXPath::absolute(cur_path,path);
+        path = FXPath::absolute(dst_root,path);
 
     // Simplify
     path = FXPath::simplify(path);
@@ -390,12 +400,19 @@ FXbool AudioConverter::format_destination(const FXString & in,FXString & out,FXu
     else
       out += tools.extension(to);  
 
-    }
-  else if (to==FILE_COPY) {
-    out = cur_path + PATHSEPSTRING + FXPath::name(in);
+    out_path = FXPath::directory(out);    
     }
   else {
-    out = cur_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
+    FXString path = FXPath::directory(in);
+    if (path!=src_root) 
+      out_path = FXPath::absolute(dst_root,FXPath::relative(src_root,path));
+    else
+      out_path = dst_root;
+
+    if (to==FILE_COPY) 
+      out = out_path + PATHSEPSTRING + FXPath::name(in);
+    else
+      out = out_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
     }
  return true;
  }
@@ -415,7 +432,7 @@ FXuint AudioConverter::convert_recode(FXuint,FXuint to,const FXString & in) {
   fxmessage("    to: %s\n",out.text());
 
   /// Make sure destination exists
-  if (!make_path(cur_path)) return STATUS_ERROR;
+  if (!make_path(out_path)) return STATUS_ERROR;
 
   /// convert
   if (!tools.encode(to,in,out)) return STATUS_ERROR;
@@ -445,7 +462,7 @@ FXuint AudioConverter::convert_direct(FXuint from,FXuint to,const FXString & in)
   fxmessage("    to: %s\n",out.text());
 
   /// Make sure destination exists
-  if (!make_path(cur_path)) return STATUS_ERROR;
+  if (!make_path(out_path)) return STATUS_ERROR;
 
   /// convert
   if (!tools.encode(to,in,out)) return STATUS_ERROR;
@@ -480,7 +497,7 @@ FXuint AudioConverter::convert_indirect(FXuint from,FXuint to,const FXString & i
   if (!tools.decode(from,in,tmp_file)) goto error;
 
   /// Make sure destination exists
-  if (!make_path(cur_path)) goto error;
+  if (!make_path(out_path)) goto error;
 
   /// convert
   if (!tools.encode(to,tmp_file,out)) goto error;
@@ -508,12 +525,16 @@ FXuint AudioConverter::convert(FXuint from,FXuint to,const FXString & in) {
     return convert_direct(from,to,in);
   else
     return convert_indirect(from,to,in);
+
   return STATUS_ERROR;
   }
 
 
 FXuint AudioConverter::copy(const FXString & in) {
-  FXString out = cur_path + PATHSEPSTRING + FXPath::name(in);
+  FXString out;
+
+  // Get the destination filename
+  if (!format_destination(in,out,FILE_COPY)) return STATUS_ERROR;
 
   /// Bail out if out exists
   if (!update_destination(in,out)) return STATUS_OK;
@@ -523,7 +544,7 @@ FXuint AudioConverter::copy(const FXString & in) {
   fxmessage("    to: %s\n",out.text());
 
   /// Make sure destination exists
-  if (!make_path(cur_path)) return STATUS_ERROR;
+  if (!make_path(out_path)) return STATUS_ERROR;
 
   /// Copy
   if (!copy_files(in,out)) return STATUS_ERROR;
@@ -560,33 +581,24 @@ FXbool AudioConverter::copy_tags(const FXString & in,const FXString & out) {
   }
 
 
-FXbool AudioConverter::copy_folder_cover(FXuint from,FXuint to,const FXString & in) {
+FXbool AudioConverter::copy_folder_cover(FXuint /*from*/,FXuint /*to*/,const FXString & in) {
   if (dryrun) {
     fxmessage("copy folder cover\n");
     return true;
     }
   else {
-    FXString out = cur_path + PATHSEPSTRING + cvr_file;
-    GMCoverList covers;
-    if (!cvr_file.empty() && !FXStat::exists(out) && GMCover::fromTag(in,covers))  {
-      fxmessage("Creating %ld %ld, %s\n",cvr_time,start_time,out.text());
+    GMCover * cover = GMCover::fromTag(in);
+    if (cover) {
 
-      /// Make sure destination exists
-      if (!make_path(cur_path)) return false;
+      FXString out = out_path + PATHSEPSTRING + "cover" + cover->fileExtension();
 
-      for (FXint i=0;i<covers.no();i++) {
-        if (covers[i]->type==GMCover::FrontCover) {
-          covers[i]->save(out);
-//          cvr_time=FXStat::modified(out);
-          return true;
-          }
-        }
-      for (FXint i=0;i<covers.no();i++) {
-        if (covers[i]->type==GMCover::Other) {
-          covers[i]->save(out);
-//          cvr_time=FXStat::modified(out);
-          return true;
-          }
+      if (!FXStat::exists(out)) {
+
+        /// Make sure destination exists
+        if (!make_path(out_path)) return false;
+
+        /// Save the cover
+        cover->save(out);  
         }
       }
     }

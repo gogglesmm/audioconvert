@@ -19,6 +19,15 @@
 #include "fox.h"
 #include "AudioTools.h"
 
+#include <errno.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/fcntl.h>
+
+
 
 static const FXchar * filetype_extensions[]={
   ".flac",
@@ -114,6 +123,7 @@ FXbool AudioTools::encoder_supports(FXuint type,FXuint desired) const {
     return false;
   }
 
+#if 0
 FXbool AudioTools::run(const FXString & operation) const{
   if (dryrun) {
     fxmessage("%s\n",operation.text());
@@ -140,30 +150,145 @@ FXbool AudioTools::run(const FXString & operation) const{
     }
   return true;
   }
+#endif
+
+static void make_argv(FXArray<FXchar*> & argv,const FXString & operation){
+  FXint pos=0;  
+  argv.no(1);  
+  do {
+    argv[argv.no()-1]=(FXchar*)(operation.text()+pos);
+    argv.no(argv.no()+1);
+    pos=operation.find('\0',pos);
+    if (pos==-1 || pos+1>=operation.length()) break;
+    pos+=1;
+    }
+  while(1);
+  argv[argv.no()-1]=NULL;  
+
+#if 0
+  argv[argv.no()-1]=NULL;
+  for (int i=0;i<argv.no();i++) {
+    fxmessage("%d:%s\n",i,argv[i]);
+    }
+#endif
+  }
+
+
+
+FXbool AudioTools::run(const FXString & operation) const{
+  if (dryrun) {
+    fxmessage("%s\n",operation.text());
+    }
+  else {
+    FXArray<FXchar*> argv;
+
+    make_argv(argv,operation);
+    
+    pid_t pid = fork();
+    if (pid==-1){ /// Failure delivered to Parent Process
+      fxwarning("Error forking\n");  
+      return false;
+      }
+    else if (pid==0) { /// Child Process
+      int i = sysconf(_SC_OPEN_MAX);
+      while (--i >= 3) {
+        close(i);
+        }       
+      execvp(argv[0],argv.data());
+      exit(EXIT_FAILURE);
+      }
+    else { /// Parent Process
+      int status=0;
+      while(1) {      
+        pid_t child = waitpid(pid,&status,0);        
+        if (child==pid) {
+          if (WIFEXITED(status)) {
+            //fxmessage("status: %d\n",WEXITSTATUS(status));
+            return (WEXITSTATUS(status)==0);
+            }
+          else if (WIFSIGNALED(status)) {
+            return false;
+            }  
+          }
+        else if (child==-1) {
+          fxmessage("got errno: %d\n",errno);
+          }
+        }   
+      return true;
+      }
+    }
+  return true;
+  }    
+        
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+FXbool AudioTools::runTool(FXuint tool,const FXString & input,const FXString & output) const {
+  FXString cmd;
+
+  cmd = tools[tool].bin + '\0';
+  if (!tools[tool].options.empty())
+    cmd += tools[tool].options + '\0';
+  cmd.substitute(' ','\0');
+
+  switch(tool) {
+    case FLAC_DECODER: 
+    case FLAC_ENCODER: 
+    case MP3_DECODER :  
+    case MP3_ENCODER : 
+    case OGG_DECODER :
+    case OGG_ENCODER : cmd += input;
+                       cmd.append("\0-o\0",4);
+                       cmd += output;
+                       break;
+
+    case MP4_DECODER :
+    case MP4_ENCODER : cmd.append("-o\0",3);
+                       cmd += output + '\0' + input;
+                       break;
+
+    case MPC_DECODER :
+    case MPC_ENCODER : cmd += input+'\0' +output;        
+                       break;
+    default          : return false; 
+                       break;
+    }
+  return run(cmd);
+  }
+
 
 FXbool AudioTools::decode(FXuint type,const FXString & input,const FXString & output) const {
-  switch(type) {
-    case FILE_FLAC  : return run(tools[FLAC_DECODER].bin + " " + tools[FLAC_DECODER].options + " " + FXPath::enquote(input) + " -o " + FXPath::enquote(output)); break;
-    case FILE_MP3   : return run(tools[ MP3_DECODER].bin + " " + tools[ MP3_DECODER].options + " " + FXPath::enquote(input) + " -o " + FXPath::enquote(output)); break;
-    case FILE_OGG   : return run(tools[ OGG_DECODER].bin + " " + tools[ OGG_DECODER].options + " " + FXPath::enquote(input) + " -o " + FXPath::enquote(output)); break;
-    case FILE_MP4   : return run(tools[ MP4_DECODER].bin + " " + tools[ MP4_DECODER].options + " -o " + FXPath::enquote(output) +  " " + FXPath::enquote(input)); break;
-    case FILE_MPC   : return run(tools[ MPC_DECODER].bin + " " + tools[ MPC_DECODER].options + " " + FXPath::enquote(input) + " " + FXPath::enquote(output)); break;
-    default         : break;
-    }
-  return false;
-  }
+  return runTool(decoder_map[type],input,output);
+  }   
 
 FXbool AudioTools::encode(FXuint type,const FXString & input,const FXString & output) const {
-  switch(type) {
-    case FILE_FLAC  : return run(tools[FLAC_ENCODER].bin + " " + tools[FLAC_ENCODER].options + "  " + FXPath::enquote(input) + " -o " + FXPath::enquote(output)); break;
-    case FILE_MP3   : return run(tools[ MP3_ENCODER].bin + " " + tools[ MP3_ENCODER].options + " " + FXPath::enquote(input) + " -o " + FXPath::enquote(output)); break;
-    case FILE_OGG   : return run(tools[ OGG_ENCODER].bin + " " + tools[ OGG_ENCODER].options + " " + FXPath::enquote(input) + " -o " + FXPath::enquote(output)); break;
-    case FILE_MP4   : return run(tools[ MP4_ENCODER].bin + " " + tools[ MP4_ENCODER].options + " -o " + FXPath::enquote(output) + " " + FXPath::enquote(input)); break;
-    case FILE_MPC   : return run(tools[ MPC_ENCODER].bin + " " + tools[ MPC_ENCODER].options + "  " + FXPath::enquote(input) + " " + FXPath::enquote(output)); break;
-    default         : break;
-    }
-  return false;
-  }
+  return runTool(encoder_map[type],input,output);
+  }   
+
 
 static void remove_option(FXString & buffer,const FXchar * opt){
   FXint len=strlen(opt);
@@ -208,29 +333,18 @@ void AudioTools::quiet(FXbool enable) {
     }
   }
 
-void AudioTools::load_rc(const FXString & filename){
-  FXSettings settings;
-#if FOXVERSION < FXVERSION(1,7,25)  
-  if (settings.parseFile(filename,true)) {
-#else
-  if (settings.parseFile(filename)) {
-#endif
-    for (FXint i=0;i<NTOOLS;i++) {
-      tools[i].bin     = settings.readStringEntry(tools[i].section,"bin",tools[i].bin.text());
-      tools[i].options = settings.readStringEntry(tools[i].section,"options",tools[i].options.text());
-      }
+void AudioTools::load_rc(FXSettings & settings){
+  for (FXint i=0;i<NTOOLS;i++) {
+    tools[i].bin     = settings.readStringEntry(tools[i].section,"bin",tools[i].bin.text());
+    tools[i].options = settings.readStringEntry(tools[i].section,"options",tools[i].options.text());
     }
   }
 
-void AudioTools::init_rc(const FXString & filename) {
-  FILE * fp = fopen(filename.text(),"w");
-  if (fp) {
-    for (FXint i=0;i<NTOOLS;i++) {
-      fprintf(fp,"#[%s]\n",tools[i].section);
-      fprintf(fp,"#bin=%s\n",tools[i].bin.text());
-      fprintf(fp,"#options=%s\n\n",tools[i].options.text());
-      }
-    fclose(fp);
+void AudioTools::init_rc(FILE * fp) {
+  for (FXint i=0;i<NTOOLS;i++) {
+    fprintf(fp,"#[%s]\n",tools[i].section);
+    fprintf(fp,"#bin=%s\n",tools[i].bin.text());
+    fprintf(fp,"#options=%s\n\n",tools[i].options.text());
     }
   }
 

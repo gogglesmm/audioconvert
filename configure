@@ -131,7 +131,7 @@ check_reswrap
 check_foxversion
 
 
-add_required_package "taglib >= 1.6.3" "taglib"
+add_required_package "taglib >= 1.7" "taglib"
 
 
 PKG_LDFLAGS=$(pkg-config --libs-only-L $PACKAGES)

@@ -5,8 +5,8 @@ audioconvert \- An audio-file copying and conversion tool.
 .B audioconvert
 [options] source [destination]
 .SH INTRODUCTION
-Audioconvert is a convenient tool to batch process audio files. It was designed to be able to quickly convert files found in the 
-.B source 
+Audioconvert is a convenient tool to batch process audio files. It was designed to be able to quickly convert files found in the
+.B source
 directory tree and store them with the same relative path in the
 .B destination
 directory. A typical use case is where you have your music files in a lossless format (FLAC) and need to have them available for a portable device in a lossy format (Ogg Vorbis).
@@ -52,6 +52,58 @@ Set desired ACTIONE for mpc files
 .TP
 .BI \-\-all= ACTION
 Set desired output for all file types. By specifying this first you can use this to set a default ACTION.
+.LP
+.RE
+.I Tagbased filename formatting
+.RS
+.TP
+.B \-\-rename
+Use tagbased filename formatting for destination files.
+.TP
+.BI \-\-format\-template= format
+Set the filename format template. Default: %P/%A?d< \- disc %d>/%N %T
+
+.I Format Specifiers
+.LP
+.RS
+%T \- Title
+
+%P \- Album Artist
+
+%p \- Track Artist
+
+%A \- Album Name
+
+%w \- Composer
+
+%c \- Conductor
+
+%y \- Year
+
+%d \- Disc Number
+
+%N \- Track Number (2 digits)
+
+%n \- Track Number
+
+%G \- Genre
+
+?c<a|b> \- display a if c is not empty, display b if c is empty
+
+?c      \- display c if not empty
+.RE
+.TP
+.BI \-\-format\-strip= characterset
+Strip characters from fields. Default: '\\#~!"$&();<>|`^*?[]/.:
+.TP
+.BI \-\-format\-encoding= encoding
+Set character encoding to use when writing field names. Default: ascii
+.TP
+.B \-\-format\-no-spaces
+Replaces spaces in fields with underscores
+.TP
+.B \-\-format\-lowercase
+Lower case fields in filenames
 .LP
 .RE
 .I Misc

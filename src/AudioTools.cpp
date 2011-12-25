@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                             Audio Converter                                  *
 ********************************************************************************
-*           Copyright (C) 2010-2010 by Sander Jansen. All Rights Reserved      *
+*           Copyright (C) 2010-2011 by Sander Jansen. All Rights Reserved      *
 *                               ---                                            *
 * This program is free software: you can redistribute it and/or modify         *
 * it under the terms of the GNU General Public License as published by         *
@@ -26,7 +26,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/fcntl.h>
-
 
 
 static const FXchar * filetype_extensions[]={
@@ -123,38 +122,9 @@ FXbool AudioTools::encoder_supports(FXuint type,FXuint desired) const {
     return false;
   }
 
-#if 0
-FXbool AudioTools::run(const FXString & operation) const{
-  if (dryrun) {
-    fxmessage("%s\n",operation.text());
-    }
-  else {
-    int status = system(operation.text());
-    if (status==-1) {
-      fxwarning("Error forking\n");
-      }
-    else if (WIFSIGNALED(status)) {
-      fxwarning("\naudioconverter: killed by signal %d\n",WTERMSIG(status));
-      }
-    else if (WIFSTOPPED(status)) {
-      fxwarning("\naudioconverter: stopped by signal %d\n", WSTOPSIG(status));
-      }
-    else if (WIFCONTINUED(status)) {
-      fxwarning("\naudioconverter: continued\n");
-      }
-    else if (WIFEXITED(status)) {
-      if (WEXITSTATUS(status)==0)
-        return true;
-      }
-    return false;
-    }
-  return true;
-  }
-#endif
-
 static void make_argv(FXArray<FXchar*> & argv,const FXString & operation){
-  FXint pos=0;  
-  argv.no(1);  
+  FXint pos=0;
+  argv.no(1);
   do {
     argv[argv.no()-1]=(FXchar*)(operation.text()+pos);
     argv.no(argv.no()+1);
@@ -163,14 +133,7 @@ static void make_argv(FXArray<FXchar*> & argv,const FXString & operation){
     pos+=1;
     }
   while(1);
-  argv[argv.no()-1]=NULL;  
-
-#if 0
   argv[argv.no()-1]=NULL;
-  for (int i=0;i<argv.no();i++) {
-    fxmessage("%d:%s\n",i,argv[i]);
-    }
-#endif
   }
 
 
@@ -183,24 +146,24 @@ FXbool AudioTools::run(const FXString & operation) const{
     FXArray<FXchar*> argv;
 
     make_argv(argv,operation);
-    
+
     pid_t pid = fork();
     if (pid==-1){ /// Failure delivered to Parent Process
-      fxwarning("Error forking\n");  
+      fxwarning("Error forking\n");
       return false;
       }
     else if (pid==0) { /// Child Process
       int i = sysconf(_SC_OPEN_MAX);
       while (--i >= 3) {
         close(i);
-        }       
+        }
       execvp(argv[0],argv.data());
       exit(EXIT_FAILURE);
       }
     else { /// Parent Process
       int status=0;
-      while(1) {      
-        pid_t child = waitpid(pid,&status,0);        
+      while(1) {
+        pid_t child = waitpid(pid,&status,0);
         if (child==pid) {
           if (WIFEXITED(status)) {
             //fxmessage("status: %d\n",WEXITSTATUS(status));
@@ -208,43 +171,17 @@ FXbool AudioTools::run(const FXString & operation) const{
             }
           else if (WIFSIGNALED(status)) {
             return false;
-            }  
+            }
           }
         else if (child==-1) {
           fxmessage("got errno: %d\n",errno);
           }
-        }   
+        }
       return true;
       }
     }
   return true;
-  }    
-        
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  }
 
 
 FXbool AudioTools::runTool(FXuint tool,const FXString & input,const FXString & output) const {
@@ -256,10 +193,10 @@ FXbool AudioTools::runTool(FXuint tool,const FXString & input,const FXString & o
   cmd.substitute(' ','\0');
 
   switch(tool) {
-    case FLAC_DECODER: 
-    case FLAC_ENCODER: 
-    case MP3_DECODER :  
-    case MP3_ENCODER : 
+    case FLAC_DECODER:
+    case FLAC_ENCODER:
+    case MP3_DECODER :
+    case MP3_ENCODER :
     case OGG_DECODER :
     case OGG_ENCODER : cmd += input;
                        cmd.append("\0-o\0",4);
@@ -272,9 +209,9 @@ FXbool AudioTools::runTool(FXuint tool,const FXString & input,const FXString & o
                        break;
 
     case MPC_DECODER :
-    case MPC_ENCODER : cmd += input+'\0' +output;        
+    case MPC_ENCODER : cmd += input+'\0' +output;
                        break;
-    default          : return false; 
+    default          : return false;
                        break;
     }
   return run(cmd);
@@ -283,11 +220,11 @@ FXbool AudioTools::runTool(FXuint tool,const FXString & input,const FXString & o
 
 FXbool AudioTools::decode(FXuint type,const FXString & input,const FXString & output) const {
   return runTool(decoder_map[type],input,output);
-  }   
+  }
 
 FXbool AudioTools::encode(FXuint type,const FXString & input,const FXString & output) const {
   return runTool(encoder_map[type],input,output);
-  }   
+  }
 
 
 static void remove_option(FXString & buffer,const FXchar * opt){
@@ -309,6 +246,7 @@ static void remove_option(FXString & buffer,const FXchar * opt){
       }
     }
   }
+  
 static void add_option(FXString & buffer,const FXchar * opt){
   if (buffer.empty()) {
     buffer+=opt;
@@ -367,6 +305,3 @@ FXbool AudioTools::check(FXuint from,FXuint to) const {
     }
   return true;
   }
-
-
-

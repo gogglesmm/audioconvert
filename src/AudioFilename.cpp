@@ -63,7 +63,6 @@
 #include "AudioFilename.h"
 
 /*
-
   Conditionals
   ------------
 
@@ -81,8 +80,6 @@
     y => track year
     w => composer
     c => conductor
-
-
 */
 
 
@@ -96,7 +93,7 @@ FXbool parsecodec(const FXString & codec,FXTextCodec *& textcodec){
     textcodec=NULL;
   else if (comparecase(codec,"utf-8")==0 || comparecase(codec,"utf8")==0)
     textcodec=new FXUTF8Codec;
-  else if (comparecase(codec,"iso8859-1")==0) 
+  else if (comparecase(codec,"iso8859-1")==0)
     textcodec=new FX88591Codec;
   else if (comparecase(codec,"iso8859-2")==0)
     textcodec=new FX88592Codec;
@@ -176,7 +173,7 @@ FXbool parsecodec(const FXString & codec,FXTextCodec *& textcodec){
     textcodec=new FXCP1257Codec;
   else if (comparecase(codec,"koi8-r")==0)
     textcodec=new FXKOI8RCodec;
-  else     
+  else
     return false;
 
   return true;
@@ -243,9 +240,9 @@ static FXString convert_and_decompose(const FXString & input,FXTextCodec * codec
       }
     else {
       input_decompose.assign(&input[i],input.extent(i));
-#if FOXVERSION < FXVERSION(1,7,29)      
+#if FOXVERSION < FXVERSION(1,7,29)
       input_decompose = decompose(input_decompose,DecCompat);
-#else      
+#else
       input_decompose = decompose(input_decompose,DecomposeCompat);
 #endif
       for (j=0;j<input_decompose.length();j=input_decompose.inc(j)){
@@ -264,8 +261,8 @@ static FXString convert_and_decompose(const FXString & input) {
   register FXint i=0;
   FXString result;
 #if FOXVERSION < FXVERSION(1,7,29)
-  FXString in = decompose(input,DecCanonical);      
-#else      
+  FXString in = decompose(input,DecCanonical);
+#else
   FXString in = decompose(input,DecomposeCanonical);
 #endif
   for (i=0;i<in.length();i=in.inc(i)){
@@ -288,7 +285,7 @@ static FXString to_8bit_codec(const FXString & input,FXTextCodec * codec,const F
   result = compose(result,DecCompat);
 #else
   result = compose(result,DecomposeCompat);
-#endif  
+#endif
 
   /// convert to given codec.
   if (dynamic_cast<FXUTF8Codec*>(codec)==NULL)
@@ -309,7 +306,7 @@ static FXString to_8bit_ascii(const FXString & input,const FXString & forbidden,
   result = compose(result,DecCompat);
 #else
   result = compose(result,DecomposeCompat);
-#endif  
+#endif
 
   /// convert to given codec.
   result = convert_and_decompose(result);
@@ -317,20 +314,6 @@ static FXString to_8bit_ascii(const FXString & input,const FXString & forbidden,
   /// Return result
   return result;
   }
-
-#if 0
-static FXString to_utf8(const FXString & input,const FXString & forbidden,FXuint opts) {
-  FXString result;
-
-  /// Filter the input
-  result = filter(input,forbidden,opts);
-
-  /// Make sure it is properly composed. Should we do this?
-  result = compose(result,DecCompat);
-
-  return result;
-  }
-#endif
 
 static FXString convert(const FXString & input,FXTextCodec * codec,const FXString & forbidden,FXuint opts) {
   if (codec)
@@ -498,7 +481,6 @@ void parse(const FXString & mrl,GMTrack & track,const FXString & mask,FXuint opt
 //  fxmessage("mask: %s\n",mask.text());
 //  fxmessage("input to scan: %s \n",input.text());
 
-
   for (i=0;i<mask.length()&&beg<input.length();i++) {
     if (mask[i]=='%' && ((i+1)<mask.length()) && ( i==0 || mask[i-1]!='\\')) {
       i+=1;
@@ -551,7 +533,5 @@ void parse(const FXString & mrl,GMTrack & track,const FXString & mask,FXuint opt
     }
 
   }
-
-
 
 }

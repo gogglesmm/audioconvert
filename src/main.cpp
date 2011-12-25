@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                             Audio Converter                                  *
 ********************************************************************************
-*           Copyright (C) 2010-2010 by Sander Jansen. All Rights Reserved      *
+*           Copyright (C) 2010-2011 by Sander Jansen. All Rights Reserved      *
 *                               ---                                            *
 * This program is free software: you can redistribute it and/or modify         *
 * it under the terms of the GNU General Public License as published by         *
@@ -50,7 +50,7 @@ static void ac_print_help() {
             "         %%y - year                    %%d - disc number\n"
             "         %%N - track number (2 digits) %%n - track number\n"
             "         %%G - genre\n"
-            "\n"            
+            "\n"
             "         ?c<a|b> => display a if c is not empty, display b if c is empty)\n"
             "         ?c      => display c if not empty\n"
             "\n"

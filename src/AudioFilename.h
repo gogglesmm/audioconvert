@@ -22,8 +22,8 @@
 namespace GMFilename {
 
   enum {
-    NOSPACES  			= 0x00000001,
-    LOWERCASE 			= 0x00000002,
+    NOSPACES  			    = 0x00000001,
+    LOWERCASE 			    = 0x00000002,
     LOWERCASE_EXTENSION	= 0x00000004
     };
 
@@ -34,7 +34,7 @@ namespace GMFilename {
 
   enum {
     REPLACE_UNDERSCORE = 0x1,
-    OVERWRITE = 0x2
+    OVERWRITE          = 0x2
     };
 
   /// Extract info from filename based on mask and store in GMTrack.

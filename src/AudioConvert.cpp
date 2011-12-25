@@ -22,6 +22,14 @@
 #include "AudioConvert.h"
 #include "AudioFilename.h"
 
+
+#include <signal.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/fcntl.h>
+
+
 /*
 
   cover conversion:
@@ -131,10 +139,10 @@ FXbool AudioConverter::parse(int argc,FXchar * argv[]) {
       overwrite=true;
     else if (compare(argv[i],"--quiet")==0 || compare(argv[i],"-q")==0)
       tools.quiet();
-    else if (compare(argv[i],"--rename")==0) 
-      rename=true;        
+    else if (compare(argv[i],"--rename")==0)
+      rename=true;
     else if (compare(argv[i],"--format-template=",9)==0) {
-      rename=true;  
+      rename=true;
       format_template = FXString(argv[i]).after('=');
       }
     else if (compare(argv[i],"--format-strip=",15)==0) {
@@ -153,7 +161,7 @@ FXbool AudioConverter::parse(int argc,FXchar * argv[]) {
       format_options|=GMFilename::NOSPACES;
       }
     else if (compare(argv[i],"--format-lowercase")==0) {
-      rename=true;  
+      rename=true;
       format_options|=GMFilename::LOWERCASE;
       }
     else {
@@ -246,7 +254,7 @@ void AudioConverter::parse_config() {
   if (!config.empty()){
     fxmessage("Found config: %s\n",config.text());
     FXSettings settings;
-#if FOXVERSION < FXVERSION(1,7,25)  
+#if FOXVERSION < FXVERSION(1,7,25)
     if (settings.parseFile(config,true)) {
 #else
     if (settings.parseFile(config)) {
@@ -378,7 +386,7 @@ FXbool AudioConverter::check_destination(const FXString & in,const FXString & ou
 FXbool AudioConverter::format_destination(const FXString & in,FXString & out,FXuint to) {
   if (rename) {
     if (!src_tag.loadTag(in)) {
-      fxmessage("Error: failed to load tag from file %s\n",in.text());  
+      fxmessage("Error: failed to load tag from file %s\n",in.text());
       return false;
       }
 
@@ -398,18 +406,18 @@ FXbool AudioConverter::format_destination(const FXString & in,FXString & out,FXu
     if (to==FILE_COPY)
       out += "." + FXPath::extension(in);
     else
-      out += tools.extension(to);  
+      out += tools.extension(to);
 
-    out_path = FXPath::directory(out);    
+    out_path = FXPath::directory(out);
     }
   else {
     FXString path = FXPath::directory(in);
-    if (path!=src_root) 
+    if (path!=src_root)
       out_path = FXPath::absolute(dst_root,FXPath::relative(src_root,path));
     else
       out_path = dst_root;
 
-    if (to==FILE_COPY) 
+    if (to==FILE_COPY)
       out = out_path + PATHSEPSTRING + FXPath::name(in);
     else
       out = out_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
@@ -569,7 +577,7 @@ FXbool AudioConverter::copy_tags(const FXString & in,const FXString & out) {
     }
   else {
     // In case of renames, we already loaded the tag
-    if (!rename) 
+    if (!rename)
         src_tag.loadTag(in);
 
     dst_tag.loadTag(out);
@@ -598,7 +606,7 @@ FXbool AudioConverter::copy_folder_cover(FXuint /*from*/,FXuint /*to*/,const FXS
         if (!make_path(out_path)) return false;
 
         /// Save the cover
-        cover->save(out);  
+        cover->save(out);
         }
       }
     }
@@ -648,4 +656,3 @@ FXuint AudioConverter::visit(const FXString & path) {
     }
   return status;
   }
-

@@ -1,7 +1,7 @@
 /*******************************************************************************
 *                         Goggles Music Manager                                *
 ********************************************************************************
-*           Copyright (C) 2006-2010 by Sander Jansen. All Rights Reserved      *
+*           Copyright (C) 2006-2011 by Sander Jansen. All Rights Reserved      *
 *                               ---                                            *
 * This program is free software: you can redistribute it and/or modify         *
 * it under the terms of the GNU General Public License as published by         *
@@ -59,24 +59,6 @@
 
 #include "FXPNGImage.h"
 #include "FXJPGImage.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 static FXbool gm_decode_base64(FXuchar * buffer,FXint & len){
   static const char base64[256]={
@@ -1042,7 +1024,6 @@ FXString GMCover::fileExtension() const{
            data[5]==10  &&
            data[6]==26  &&
            data[7]==10) {
-
     return ".png";
     }
   else if (data[0]==0xFF &&
@@ -1144,23 +1125,6 @@ GMCover * GMCover::fromPath(const FXString & path) {
   }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 GMTrack::GMTrack() :
   year(0),
   no(0){
@@ -1239,20 +1203,3 @@ FXbool GMTrack::loadTag(const FXString & filename) {
   setDiscNumber(filetags.getDiscNumber());
   return true;
   }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

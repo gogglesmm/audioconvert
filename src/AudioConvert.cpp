@@ -71,6 +71,7 @@ AudioConverter::AudioConverter() : dryrun(false),overwrite(false),rename(false),
   tmp_file=FXSystem::getTempDirectory() + PATHSEPSTRING + "audioconvert.wav";
   format_template="%P/%A?d< - disc %d>/%N %T";
   format_strip="\'\\#~!\"$&();<>|`^*?[]/.:";
+  format_options=0;
   }
 
 AudioConverter::~AudioConverter(){

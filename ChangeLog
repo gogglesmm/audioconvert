@@ -1,3 +1,6 @@
+0.3.1 (Dec 26, 2011)
+  - Fix uninitialed option variable
+
 0.3.0 (Dec 25,2011)
   - Fix issue where incorrect output directory was used.
   - Call external tools directly instead of through shell.

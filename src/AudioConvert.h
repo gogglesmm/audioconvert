@@ -33,7 +33,7 @@ public:
 
   virtual FXbool run();
 
-  virtual FXbool done(FXbool success) { return true; }
+  virtual FXbool done(FXbool /*success*/) { return true; }
 
   virtual ~Task();
   };

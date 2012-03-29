@@ -23,14 +23,16 @@
 #include "AudioConvert.h"
 
 static void ac_print_help() {
-  fxmessage("Usage: audioconvert [options] source [destination]\n\n"
+  printf("Usage: audioconvert [options] source [destination]\n\n"
             "General options:\n"
             " -h, --help                Display this help page\n"
             " -v, --version             Display version information\n"
             "\n"
             " -n, --dry-run             Print operations instead of performing\n"
             "     --overwrite           Force overwriting existing files\n"
+            "     --no-direct           Do not use direct conversion\n"
             " -q, --quiet               Suppress Output Messages\n"
+            " -j <count>                Specificy maximum number of parallel tasks (default 1)\n"
             "\n"
             "Filename Options:\n"
             "     --rename              Name files based on tag information\n"
@@ -100,7 +102,7 @@ int main(int argc,char *argv[]){
 
   AudioConverter converter;
 
-  if (!converter.parse(argc,argv))
+  if (!converter.init(argc,argv))
     return 1;
 
   return converter.run();

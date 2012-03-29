@@ -1,5 +1,10 @@
+0.4.0 (Mar 27, 2012)
+  - Parallel execution.
+  - Workaround oggenc not supporting flac files with id3v2 tags.
+  - Improved error reporting.
+
 0.3.1 (Dec 26, 2011)
-  - Fix uninitialed option variable
+  - Fix uninitialized option variable
 
 0.3.0 (Dec 25,2011)
   - Fix issue where incorrect output directory was used.

@@ -63,6 +63,7 @@ struct ToolConfig {
   FXString       bin;
   FXString       options;
   FXuint         types;   /// bitmask which inputs are supported
+  FXchar         found;
   ToolConfig();
   };
 
@@ -74,20 +75,19 @@ protected:
 protected:
   ToolConfig tools[NTOOLS];
 protected:
-  FXbool runTool(FXuint type,const FXString & input,const FXString & output) const;
-  FXbool run(const FXString & cmd) const;
+  FXString runTool(FXuint type,const FXString & input,const FXString & output) const;
 public:
   AudioTools();
 
   /// Return desired extension for given file type;
   const FXchar * extension(FXuint type) const;
-  
-  FXbool check(FXuint from,FXuint to) const;
+
+  FXbool check(FXuint from,FXuint to);
 
   FXbool encoder_supports(FXuint type,FXuint input) const;
 
-  FXbool decode(FXuint type,const FXString & input,const FXString & output) const;
-  FXbool encode(FXuint type,const FXString & input,const FXString & output) const;
+  FXString decode(FXuint type,const FXString & input,const FXString & output) const;
+  FXString encode(FXuint type,const FXString & input,const FXString & output) const;
 
   // Set Quiet Operation
   void quiet(FXbool enable=true);

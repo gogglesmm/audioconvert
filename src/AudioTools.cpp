@@ -19,15 +19,6 @@
 #include "fox.h"
 #include "AudioTools.h"
 
-#include <errno.h>
-#include <unistd.h>
-#include <signal.h>
-#include <sys/wait.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/fcntl.h>
-
-
 static const FXchar * filetype_extensions[]={
   ".flac",
   ".mp3",
@@ -37,7 +28,7 @@ static const FXchar * filetype_extensions[]={
   };
 
 
-ToolConfig::ToolConfig() : section(NULL),quiet(NULL),types(0) {}
+ToolConfig::ToolConfig() : section(NULL),quiet(NULL),types(0),found(-1) {}
 
 AudioTools::AudioTools() : dryrun(false) {
 
@@ -122,69 +113,10 @@ FXbool AudioTools::encoder_supports(FXuint type,FXuint desired) const {
     return false;
   }
 
-static void make_argv(FXArray<FXchar*> & argv,const FXString & operation){
-  FXint pos=0;
-  argv.no(1);
-  do {
-    argv[argv.no()-1]=(FXchar*)(operation.text()+pos);
-    argv.no(argv.no()+1);
-    pos=operation.find('\0',pos);
-    if (pos==-1 || pos+1>=operation.length()) break;
-    pos+=1;
-    }
-  while(1);
-  argv[argv.no()-1]=NULL;
-  }
 
 
 
-FXbool AudioTools::run(const FXString & operation) const{
-  if (dryrun) {
-    fxmessage("%s\n",operation.text());
-    }
-  else {
-    FXArray<FXchar*> argv;
-
-    make_argv(argv,operation);
-
-    pid_t pid = fork();
-    if (pid==-1){ /// Failure delivered to Parent Process
-      fxwarning("Error forking\n");
-      return false;
-      }
-    else if (pid==0) { /// Child Process
-      int i = sysconf(_SC_OPEN_MAX);
-      while (--i >= 3) {
-        close(i);
-        }
-      execvp(argv[0],argv.data());
-      exit(EXIT_FAILURE);
-      }
-    else { /// Parent Process
-      int status=0;
-      while(1) {
-        pid_t child = waitpid(pid,&status,0);
-        if (child==pid) {
-          if (WIFEXITED(status)) {
-            //fxmessage("status: %d\n",WEXITSTATUS(status));
-            return (WEXITSTATUS(status)==0);
-            }
-          else if (WIFSIGNALED(status)) {
-            return false;
-            }
-          }
-        else if (child==-1) {
-          fxmessage("got errno: %d\n",errno);
-          }
-        }
-      return true;
-      }
-    }
-  return true;
-  }
-
-
-FXbool AudioTools::runTool(FXuint tool,const FXString & input,const FXString & output) const {
+FXString AudioTools::runTool(FXuint tool,const FXString & input,const FXString & output) const {
   FXString cmd;
 
   cmd = tools[tool].bin + '\0';
@@ -211,18 +143,18 @@ FXbool AudioTools::runTool(FXuint tool,const FXString & input,const FXString & o
     case MPC_DECODER :
     case MPC_ENCODER : cmd += input+'\0' +output;
                        break;
-    default          : return false;
+    default          : return FXString::null;
                        break;
     }
-  return run(cmd);
+  return cmd;
   }
 
 
-FXbool AudioTools::decode(FXuint type,const FXString & input,const FXString & output) const {
+FXString AudioTools::decode(FXuint type,const FXString & input,const FXString & output) const {
   return runTool(decoder_map[type],input,output);
   }
 
-FXbool AudioTools::encode(FXuint type,const FXString & input,const FXString & output) const {
+FXString AudioTools::encode(FXuint type,const FXString & input,const FXString & output) const {
   return runTool(encoder_map[type],input,output);
   }
 
@@ -246,7 +178,7 @@ static void remove_option(FXString & buffer,const FXchar * opt){
       }
     }
   }
-  
+
 static void add_option(FXString & buffer,const FXchar * opt){
   if (buffer.empty()) {
     buffer+=opt;
@@ -286,21 +218,49 @@ void AudioTools::init_rc(FILE * fp) {
     }
   }
 
-FXbool AudioTools::check(FXuint from,FXuint to) const {
-  FXString decoder = tools[decoder_map[from]].bin.before(' ');
-  FXString encoder = tools[encoder_map[to]].bin.before(' ');
+FXbool AudioTools::check(FXuint from,FXuint to) {
+  FXuint dt = decoder_map[from];
+  FXuint et = encoder_map[to];
 
-  decoder=FXPath::search(decoder,FXSystem::getEnvironment("PATH"));
-  encoder=FXPath::search(encoder,FXSystem::getEnvironment("PATH"));
+  FXString decoder_bin = tools[dt].bin.before(' ');
+  FXString encoder_bin = tools[et].bin.before(' ');
+  FXString path        = FXSystem::getEnvironment("PATH");
+  FXString decoder,encoder;
 
-  if (decoder.empty()) {
+  if (tools[dt].found<0){
+    decoder = FXPath::search(path,decoder_bin);
+    if (!decoder.empty()) {
+      printf("Info: found %s in %s\n",decoder_bin.text(),decoder.text());
+      tools[dt].found=1;
+      }
+    else {
+      printf("Warning: %s not found in PATH\n",decoder_bin.text());
+      tools[dt].found=0;
+      }
+    }
 
-    if (!encoder.empty() || encoder_supports(to,from))
+  if (tools[et].found<0) {
+    encoder = FXPath::search(path,encoder_bin);
+    if (!decoder.empty()) {
+      printf("Info: found %s in %s\n",encoder_bin.text(),encoder.text());
+      tools[et].found=1;
+      }
+    else {
+      printf("Warning: %s not found in PATH\n",decoder_bin.text());
+      tools[et].found=0;
+      }
+    }
+
+  if (tools[dt].found==0) {
+    if (tools[et].found==1 && encoder_supports(to,from)){
       return true;
-
+      }
+    printf("Error: requested conversion not supported. Missing decoder.\n");
     return false;
     }
-  else if (encoder.empty()) {
+
+  if (tools[et].found==0){
+    printf("Error: requested conversion not supported. Missing encoder.\n");
     return false;
     }
   return true;

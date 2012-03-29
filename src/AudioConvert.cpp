@@ -22,24 +22,12 @@
 #include "AudioConvert.h"
 #include "AudioFilename.h"
 
-
-#include <signal.h>
+#include <errno.h>
+#include <unistd.h>
 #include <sys/wait.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/fcntl.h>
 
 
-/*
-
-  cover conversion:
-
-    embedded -> embedded
-    embedded -> folder    (extract front cover)
-    folder   -> embedded
-
-
-*/
+#define TASK_SUCCESS(s) (WIFEXITED(s) && (WEXITSTATUS(s)==0))
 
 
 FXbool gm_make_path(const FXString & path,FXuint perm=FXIO::OwnerFull|FXIO::GroupFull|FXIO::OtherFull) {
@@ -56,30 +44,549 @@ FXbool gm_make_path(const FXString & path,FXuint perm=FXIO::OwnerFull|FXIO::Grou
 #endif
   }
 
+
+
+
+TaskManager::TaskManager(FXint max) : maxtask(max) {
+  }
+
+TaskManager::~TaskManager() {
+  }
+
+void TaskManager::appendTask(Task * task,FXbool dryrun) {
+  if (dryrun) {
+    if (task->run()) {
+      while(!task->done(true)) ;      
+      }
+    delete task;
+    }
+  else {
+    if (task->run()) {
+      tasklist.append(task);
+      wait();
+      while(tasklist.no()==maxtask) {
+        wait(true);
+        }
+      }
+    else {
+      delete task;
+      }
+    }
+  }
+
+void TaskManager::removeTask(FXint i) {
+  Task * task = tasklist[i];
+  tasklist.erase(i);
+  delete task;
+  }
+
+
+void TaskManager::updateTask(pid_t pid,FXint status) {
+  for (FXint i=0;i<tasklist.no();i++){
+    if (tasklist[i]->pid==pid) {
+      if (WIFEXITED(status) || WIFSIGNALED(status)) {
+        if (WIFEXITED(status))
+          printf("Info: process %d exited with status %d\n",pid,WEXITSTATUS(status));
+        else
+          printf("Info: process %d terminated with signal %d\n",pid,WTERMSIG(status));
+
+        tasklist[i]->pid=0;
+        if (tasklist[i]->done(TASK_SUCCESS(status)))
+          removeTask(i);
+        }
+      else if (WIFSTOPPED(status)) {
+        printf("Info: process %d was stopped with signal %d\n",pid,WSTOPSIG(status));
+        }
+      else if (WIFCONTINUED(status)) {
+        printf("Info: process %d continued\n",pid);
+        }
+      else {
+        FXASSERT(0);
+        }
+      return;
+      }
+    }
+  }
+
+void TaskManager::wait(FXbool block) {
+  pid_t pid;
+  int status;
+  do {
+    pid = waitpid(-1,&status,(block) ? 0 : WNOHANG);
+    if (pid>0) {
+      updateTask(pid,status);
+      if (!block) continue;
+      }
+    else if (pid==-1) {
+      if (errno==EINTR) continue;
+      }
+    break;
+    }
+  while(1);
+  }
+
+void TaskManager::waitall() {
+  pid_t pid;
+  int status;
+  do {
+    pid = waitpid(-1,&status,0);
+    if (pid>0) {
+      updateTask(pid,status);
+      continue;
+      }
+    else if (pid==-1) {
+      if (errno==EINTR) continue;
+      }
+    break;
+    }
+  while(1);
+  }
+
+
+static void print_argv(const FXString & operation) {
+  FXint pos=0;
+  do {
+    printf("%s",operation.text()+pos);
+    pos=operation.find('\0',pos);
+    if (pos==-1 || pos+1>=operation.length()) break;
+    printf(" ");
+    pos+=1;
+    }
+  while(1);
+  printf("\n");
+  }
+
+
+static void make_argv(FXArray<FXchar*> & argv,const FXString & operation){
+  FXint pos=0;
+  argv.no(1);
+  do {
+    argv[argv.no()-1]=(FXchar*)(operation.text()+pos);
+    argv.no(argv.no()+1);
+    pos=operation.find('\0',pos);
+    if (pos==-1 || pos+1>=operation.length()) break;
+    pos+=1;
+    }
+  while(1);
+  argv[argv.no()-1]=NULL;
+  }
+
+Task::Task() : pid(0) {
+  }
+
+Task::~Task() {
+  FXASSERT(pid==0);
+  }
+
+FXbool Task::run() {
+  return false;
+  }
+
+FXbool Task::execute(const FXString & cmd) {
+  pid = fork();
+  if (pid==-1) {
+    return false;
+    }
+  else if (pid==0) {
+    int i = sysconf(_SC_OPEN_MAX);
+    while (--i >= 3) {
+      close(i);
+      }
+    FXArray<FXchar*> argv;
+    make_argv(argv,cmd);
+    execvp(argv[0],argv.data());
+    exit(EXIT_FAILURE);
+    }
+  else {
+    printf("Info: process %d started\n",pid);
+    return true;
+    }
+  return false;
+  }
+
+
+
+
+class BaseTask : public Task {
+protected:
+  AudioConverter * audioconvert;
+protected:
+  GMTrack  source_track;
+  FXString source;
+  FXString target;
+  FXString target_path;
+  FXuint   from;
+  FXuint   to;
+protected:
+  FXbool target_format();
+  FXbool target_check();
+  FXbool target_update();
+  FXbool copy_tags();
+protected:
+  FXbool execute(const FXString & command);
+public:
+  BaseTask(AudioConverter* audioconvert,const FXString & in,FXuint from, FXuint to);
+  };
+
+BaseTask::BaseTask(AudioConverter* ac, const FXString & in,FXuint f,FXuint t) : audioconvert(ac),source(in),from(f),to(t) {
+  }
+
+FXbool BaseTask::target_format() {
+  if (audioconvert->getFormat()) {
+
+    // Load Tag
+    if (!source_track.loadTag(source)) {
+      printf("Error: Failed to load tag from %s\n",source.text());
+      return false;
+      }
+
+    // Get Format Template
+    FXString path = FXPath::expand(audioconvert->getFormatTemplate());
+
+    // Make absolute if necessary
+    if (!FXPath::isAbsolute(path))
+      path = FXPath::absolute(audioconvert->getTarget(),path);
+
+    // Simplify
+    path = FXPath::simplify(path);
+
+    // Format name based on tag
+    target = GMFilename::format(source_track,path,audioconvert->getFormatStrip(),audioconvert->getFormatOptions(),audioconvert->getFormatCodec());
+
+    // Add extension
+    if (to==FILE_COPY)
+      target += "." + FXPath::extension(source);
+    else
+      target += audioconvert->getExtension(to);
+
+    // Get the path
+    target_path = FXPath::directory(target);
+    }
+  else {
+    FXString path = FXPath::directory(source);
+
+    if (path!=audioconvert->getSource())
+      target_path = FXPath::absolute(audioconvert->getTarget(),FXPath::relative(audioconvert->getSource(),path));
+    else
+      target_path = audioconvert->getTarget();
+
+    if (to==FILE_COPY)
+      target = target_path + PATHSEPSTRING + FXPath::name(source);
+    else
+      target = target_path + PATHSEPSTRING + FXPath::title(source) + audioconvert->getExtension(to);
+    }
+  return true;
+  }
+
+FXbool BaseTask::target_check() {
+  if (source==target) {
+    return false;
+    }
+  return true;
+  }
+
+FXbool BaseTask::target_update() {
+  if (audioconvert->getOverWrite() || FXStat::modified(source) > FXStat::modified(target))
+    return true;
+  else
+    return false;
+  }
+
+FXbool BaseTask::execute(const FXString & command) {
+  if (audioconvert->getDryRun()) {
+    print_argv(command);
+    return true;
+    }
+  else if (!Task::execute(command)){
+    audioconvert->stop();
+    return false;
+    }
+  else {
+    return true;
+    }
+  }
+
+FXbool BaseTask::copy_tags() {
+  if (audioconvert->getDryRun()) {
+    printf("(internal) copy tags\n");
+    }
+  else {
+    GMTrack target_track;
+
+    /// Load source tag if we haven't already
+    if (!audioconvert->getFormat()) {
+      if (!source_track.loadTag(source)) {
+        printf("Warning: failed to load tag from %s\n",source.text());
+        return false;
+        }
+      }
+
+    /// Load target tag
+    if (!target_track.loadTag(target)) {
+      printf("Warning: failed to load tag from %s\n",target.text());
+      return false;
+      }
+
+    /// Update target tag if different from source tag
+    if (source_track.title!=target_track.title) {
+      source_track.saveTag(target);
+      }
+    }
+  return true;
+  }
+
+
+// Copies source to target
+class CopyTask : public BaseTask {
+public:
+  CopyTask(AudioConverter * a,const FXString & source);
+  FXbool run();
+  };
+
+
+CopyTask::CopyTask(AudioConverter * a,const FXString & i) :  BaseTask(a,i,FILE_COPY,FILE_COPY) {
+  }
+
+FXbool CopyTask::run() {
+  if (!target_format()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_check()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_update()){
+    return false;
+    }
+
+  if (!gm_make_path(target_path)){
+    audioconvert->stop();
+    return false;
+    }
+
+  printf("Info:   task: copy\n");
+  printf("      source: %s\n",source.text());
+  printf("      target: %s\n\n",target.text());
+  if (!audioconvert->getDryRun() && !FXFile::copyFiles(source,target)){
+    audioconvert->stop();
+    }
+  // Don't add this task to the process manager
+  return false;
+  }
+
+
+class DirectTask : public BaseTask {
+public:
+  DirectTask(AudioConverter * a,const FXString & i,FXuint f,FXuint t);
+
+  FXbool run();
+
+  FXbool done(FXbool status);
+  };
+
+
+DirectTask::DirectTask(AudioConverter * a,const FXString & i,FXuint f,FXuint t) :BaseTask(a,i,f,t) {
+  }
+
+FXbool DirectTask::run() {
+  if (!target_format()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_check()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_update()){
+    return false;
+    }
+
+  if (!gm_make_path(target_path)){
+    audioconvert->stop();
+    return false;
+    }
+
+  printf("Info:   task: convert (direct)\n");
+  printf("      source: %s\n",source.text());
+  printf("      target: %s\n\n",target.text());
+  return execute(audioconvert->getEncoder(to,source,target));
+  }
+
+
+FXbool DirectTask::done(FXbool success) {
+  if (success){
+    /// oggenc copies tags for us
+    if (!(from==FILE_FLAC && to==FILE_OGG))
+      copy_tags();
+    }
+  else {
+    audioconvert->stop();
+    }
+  return true;
+  }
+
+
+class IndirectTask : public BaseTask {
+protected:
+  FXString temp;
+  FXbool   decoding;
+protected:
+  FXbool target_temp();
+public:
+  IndirectTask(AudioConverter * a,const FXString & i,FXuint f,FXuint t);
+
+  void clear();
+
+  FXbool run();
+
+  FXbool done(FXbool status);
+  };
+
+
+IndirectTask::IndirectTask(AudioConverter * a,const FXString & i,FXuint f,FXuint t) : BaseTask(a,i,f,t),decoding(true) {
+  }
+
+void IndirectTask::clear() {
+  if (!temp.empty() && FXStat::exists(temp)){
+    FXFile::remove(temp);
+    }
+  }
+
+FXbool IndirectTask::target_temp() {
+  temp = FXPath::unique(target_path+PATHSEPSTRING"audioconvert.wav");
+  if (FXStat::exists(temp))
+    return false;
+  else
+    return true;
+  }
+
+
+
+FXbool IndirectTask::done(FXbool success) {
+  if (success) {
+    if (decoding) {
+      if (!execute(audioconvert->getEncoder(to,temp,target))) {
+        clear();
+        audioconvert->stop();
+        return true;
+        }
+      decoding=false;
+      return false;
+      }
+    else {
+      // finish up by copying tags
+      copy_tags();
+      clear();
+      return true;
+      }
+    }
+  else {
+    clear();
+    audioconvert->stop();
+    }
+  return true;
+  }
+
+FXbool IndirectTask::run() {
+
+  if (!target_format()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_check()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_update()){
+    return false;
+    }
+
+  if (!target_temp()){
+    audioconvert->stop();
+    return false;
+    }
+
+  printf("Info:   task: convert (indirect)\n");
+  printf("      source: %s\n",source.text());
+  printf("         via: %s\n",temp.text());
+  printf("      target: %s\n\n",target.text());
+  return execute(audioconvert->getDecoder(from,source,temp));
+  }
+
+
+
+
+
+class RecodeTask : public BaseTask {
+public:
+  RecodeTask(AudioConverter * a,const FXString & i,FXuint f);
+
+  FXbool run();
+
+  FXbool done(FXbool status);
+  };
+
+
+RecodeTask::RecodeTask(AudioConverter * a,const FXString & i,FXuint f) :BaseTask(a,i,f,f) {
+  }
+
+FXbool RecodeTask::run() {
+  if (!target_format()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_update()){
+    return false;
+    }
+
+  if (!gm_make_path(target_path)){
+    audioconvert->stop();
+    return false;
+    }
+
+  printf("Info:   task: recode\n");
+  printf("      target: %s\n\n",target.text());
+  return execute(audioconvert->getEncoder(to,source,target));
+  }
+
+
+FXbool RecodeTask::done(FXbool success) {
+  if (!success){
+    audioconvert->stop();
+    }
+  return true;
+  }
+
 enum {
   STATUS_ERROR=0,
   STATUS_OK=1
   };
 
 
-AudioConverter::AudioConverter() : dryrun(false),overwrite(false),rename(false),format_codec(NULL),out_time(0) {
-  mode[FILE_FLAC]=FILE_NONE;
-  mode[FILE_MP3]=FILE_NONE;
-  mode[FILE_OGG]=FILE_NONE;
-  mode[FILE_MP4]=FILE_NONE;
-  mode[FILE_MPC]=FILE_NONE;
-  tmp_file=FXSystem::getTempDirectory() + PATHSEPSTRING + "audioconvert.wav";
-  format_template="%P/%A?d< - disc %d>/%N %T";
-  format_strip="\'\\#~!\"$&();<>|`^*?[]/.:";
-  format_options=0;
+
+AudioConverter::AudioConverter() :
+  dryrun(false),
+  overwrite(false),
+  nodirect(false),
+  reformat(false),
+  status(STATUS_OK),
+  format_template("%P/%A?d< - disc %d>/%N %T"),
+  format_strip("\'\\#~!\"$&();<>|`^*?[]/.:"),
+  format_options(0),
+  format_codec(NULL) {
+  for (FXint i=0;i<FILE_NTYPES;i++)
+    mode[i]=FILE_NONE;
   }
 
-AudioConverter::~AudioConverter(){
-  delete format_codec;
-  }
-
-
-FXuint AudioConverter::parse_mode(const FXchar * cstr){
+FXuint AudioConverter::getMode(const FXchar * cstr){
   FXString m = FXString(cstr).after('=');
   if (comparecase(m,"ogg")==0)
     return FILE_OGG;
@@ -96,151 +603,12 @@ FXuint AudioConverter::parse_mode(const FXchar * cstr){
   else if (comparecase(m,"none")==0 || comparecase(m,"off")==0)
     return FILE_NONE;
   else{
-    fxmessage("Error: Invalid conversion specified \"%s\"\n",cstr);
+    printf("Error: Invalid conversion specified \"%s\"\n",cstr);
     return FILE_INVALID;
     }
   }
 
-FXbool AudioConverter::parse(int argc,FXchar * argv[]) {
-  FXint nargs=0;
-  for (FXint i=1;i<argc;i++) {
-    if (compare(argv[i],"--dry-run")==0 || compare(argv[i],"-n")==0){
-      dryrun=true;
-      tools.dryrun=true;
-      }
-    else if (compare(argv[i],"--ogg=",6)==0){
-      if ((mode[FILE_OGG]=parse_mode(argv[i]))==FILE_INVALID)
-        return false;
-      }
-    else if (compare(argv[i],"--mp3=",6)==0){
-      if ((mode[FILE_MP3]=parse_mode(argv[i]))==FILE_INVALID)
-        return false;
-      }
-    else if (compare(argv[i],"--flac=",7)==0){
-      if ((mode[FILE_FLAC]=parse_mode(argv[i]))==FILE_INVALID)
-        return false;
-      }
-    else if (compare(argv[i],"--mp4=",6)==0){
-      if ((mode[FILE_MP4]=parse_mode(argv[i]))==FILE_INVALID)
-        return false;
-      }
-    else if (compare(argv[i],"--mpc=",6)==0){
-      if ((mode[FILE_MPC]=parse_mode(argv[i]))==FILE_INVALID)
-        return false;
-      }
-    else if (compare(argv[i],"--all=",6)==0){
-      FXuint m=parse_mode(argv[i]);
-      if (m==FILE_INVALID)
-        return false;
-
-      for (FXint f=0;f<FILE_NTYPES;f++)
-        mode[f]=m;
-      }
-    else if (compare(argv[i],"--overwrite")==0)
-      overwrite=true;
-    else if (compare(argv[i],"--quiet")==0 || compare(argv[i],"-q")==0)
-      tools.quiet();
-    else if (compare(argv[i],"--rename")==0)
-      rename=true;
-    else if (compare(argv[i],"--format-template=",9)==0) {
-      rename=true;
-      format_template = FXString(argv[i]).after('=');
-      }
-    else if (compare(argv[i],"--format-strip=",15)==0) {
-      rename=true;
-      format_strip = FXString(argv[i]).after('=');
-      }
-    else if (compare(argv[i],"--format-encoding=",18)==0) {
-      rename=true;
-      if (!GMFilename::parsecodec(FXString(argv[i]).after('='),format_codec)) {
-        fxmessage("Error: Invalid format encoding %s",argv[i]);
-        return false;
-        }
-      }
-    else if (compare(argv[i],"--format-no-spaces")==0) {
-      rename=true;
-      format_options|=GMFilename::NOSPACES;
-      }
-    else if (compare(argv[i],"--format-lowercase")==0) {
-      rename=true;
-      format_options|=GMFilename::LOWERCASE;
-      }
-    else {
-      nargs++;
-
-      if (nargs>2) {
-        fxmessage("Error: Unexpected argument %s\n",argv[i]);
-        return false;
-        }
-
-      FXString path = argv[i];
-      if (!FXPath::isAbsolute(path)) {
-        path=FXPath::absolute(FXSystem::getCurrentDirectory(),path);
-        }
-
-      if (nargs==1)
-        src_root.adopt(path);
-      else
-        dst_root.adopt(path);
-      }
-    }
-
-  /// Time to read the configuration file.
-  parse_config();
-
-  if (src_root.empty()) {
-    fxmessage("Error: Missing argument source directory.\n");
-    return false;
-    }
-
-  if (!FXStat::exists(src_root)){
-    fxmessage("Error: Source directory doesn't exist.\n");
-    return false;
-    }
-
-  if (!FXStat::isDirectory(src_root)){
-    fxmessage("Error: source is not a directory\n");
-    return false;
-    }
-
-  if (dst_root.empty()) {
-    dst_root=src_root;
-    }
-
-  if (dst_root==src_root ){
-    fxmessage("Destination same as source! Continue? ");
-    int answer = getc(stdin);
-    if (!(answer=='y' || answer=='Y')) {
-      fxmessage("\n");
-      return false;
-      }
-    fxmessage("\n");
-    }
-
-  if (FXStat::exists(dst_root) && !FXStat::isDirectory(dst_root)){
-    fxmessage("Error: destination is not a directory\n");
-    return false;
-    }
-
-
- /// Make sure we're actually doing something
-  FXbool nothing=true;
-  for (FXint f=0;f<FILE_NTYPES;f++){
-    if (mode[f]!=FILE_NONE) {
-      nothing=false;
-      break;
-      }
-    }
-  if(nothing) {
-    fxmessage("Error: No output conversion specified\n");
-    return false;
-    }
-
-  return true;
-  }
-
-
-void AudioConverter::parse_config() {
+void AudioConverter::initConfig() {
   const FXchar * config_file = "audioconvert/config.rc";
 
   FXString xdg_config_dirs = FXSystem::getEnvironment("XDG_CONFIG_DIRS");
@@ -253,7 +621,7 @@ void AudioConverter::parse_config() {
   if (config.empty()) config = FXPath::search(xdg_config_dirs,config_file);
 
   if (!config.empty()){
-    fxmessage("Found config: %s\n",config.text());
+    printf("Info: Found config %s\n",config.text());
     FXSettings settings;
 #if FOXVERSION < FXVERSION(1,7,25)
     if (settings.parseFile(config,true)) {
@@ -263,22 +631,243 @@ void AudioConverter::parse_config() {
       tools.load_rc(settings);
       format_template = settings.readStringEntry("format","template",format_template.text());
       format_strip    = settings.readStringEntry("format","strip",format_strip.text());
+
+      if (settings.readBoolEntry("format","lowercase",false))
+        format_options|=GMFilename::LOWERCASE;
+
+      if (settings.readBoolEntry("format","nospaces",false))
+        format_options|=GMFilename::NOSPACES;
       }
     }
   else {
     config = FXPath::absolute(FXPath::expand(xdg_config_home),config_file);
     if (!gm_make_path(FXPath::directory(config))) return;
-    fxmessage("Creating config: %s\n",config.text());
+    printf("Creating config: %s\n",config.text());
     FILE * fp = fopen(config.text(),"w");
     if (fp) {
       fprintf(fp,"#[format]\n");
       fprintf(fp,"#template=%s\n",format_template.text());
       fprintf(fp,"#strip=%s\n\n",format_strip.text());
+      fprintf(fp,"#lowercase=false\n\n");
+      fprintf(fp,"#nospaces=false\n\n");
       tools.init_rc(fp);
       fclose(fp);
       }
     }
   }
+
+
+
+FXbool AudioConverter::init(FXint argc,FXchar *argv[]) {
+  FXint nargs=0;
+  for (FXint i=1;i<argc;i++) {
+    if (compare(argv[i],"--dry-run")==0 || compare(argv[i],"-n")==0) {
+      dryrun=true;
+      }
+    else if (compare(argv[i],"--quiet")==0 || compare(argv[i],"-q")==0){
+      tools.quiet();
+      }
+    else if (compare(argv[i],"--overwrite")==0) {
+      overwrite=true;
+      }
+    else if (compare(argv[i],"--no-direct")==0) {
+      nodirect=true;
+      }
+    else if (compare(argv[i],"--rename")==0)
+      reformat=true;
+    else if (compare(argv[i],"--format-template=",9)==0) {
+      reformat=true;
+      format_template = FXString(argv[i]).after('=');
+      }
+    else if (compare(argv[i],"--format-strip=",15)==0) {
+      reformat=true;
+      format_strip = FXString(argv[i]).after('=');
+      }
+    else if (compare(argv[i],"--format-encoding=",18)==0) {
+      reformat=true;
+      if (!GMFilename::parsecodec(FXString(argv[i]).after('='),format_codec)) {
+        printf("Error: Invalid format encoding %s",argv[i]);
+        return false;
+        }
+      }
+    else if (compare(argv[i],"--format-no-spaces")==0) {
+      reformat=true;
+      format_options|=GMFilename::NOSPACES;
+      }
+    else if (compare(argv[i],"--format-lowercase")==0) {
+      reformat=true;
+      format_options|=GMFilename::LOWERCASE;
+      }
+    else if (compare(argv[i],"-j")==0) {
+      if ((i+1)<argc) {
+#if FOXVERSION < FXVERSION(1,7,0)
+        FXint max = FXMAX(1,FXIntVal(argv[i+1]));
+#else
+        FXint max = FXMAX(1,FXString(argv[i+1]).toInt());
+#endif
+        printf("Info: Using maximum %d parallel tasks\n",max);
+        manager.setMaxTasks(max);
+        i+=1;
+        }
+      else {
+        printf("Error: Missing argument for -j <number>\n");
+        return false;
+        }
+      }
+    else if (compare(argv[i],"--ogg=",6)==0){
+      if ((mode[FILE_OGG]=getMode(argv[i]))==FILE_INVALID)
+        return false;
+      }
+    else if (compare(argv[i],"--mp3=",6)==0){
+      if ((mode[FILE_MP3]=getMode(argv[i]))==FILE_INVALID)
+        return false;
+      }
+    else if (compare(argv[i],"--flac=",7)==0){
+      if ((mode[FILE_FLAC]=getMode(argv[i]))==FILE_INVALID)
+        return false;
+      }
+    else if (compare(argv[i],"--mp4=",6)==0){
+      if ((mode[FILE_MP4]=getMode(argv[i]))==FILE_INVALID)
+        return false;
+      }
+    else if (compare(argv[i],"--mpc=",6)==0){
+      if ((mode[FILE_MPC]=getMode(argv[i]))==FILE_INVALID)
+        return false;
+      }
+    else if (compare(argv[i],"--all=",6)==0){
+      FXuint m=getMode(argv[i]);
+      if (m==FILE_INVALID)
+        return false;
+
+      for (FXint f=0;f<FILE_NTYPES;f++)
+        mode[f]=m;
+      }
+    else {
+      nargs++;
+
+      if (nargs>2) {
+        printf("Error: Unexpected argument (%d) %s\n",i,argv[i]);
+        return false;
+        }
+
+      FXString path = argv[i];
+      if (!FXPath::isAbsolute(path))
+        path = FXPath::absolute(FXSystem::getCurrentDirectory(),path);
+
+      if (nargs==1)
+        source.adopt(path);
+      else
+        target.adopt(path);
+      }
+    }
+
+  // Read configuration
+  initConfig();
+
+  // Make sure we're actually doing something
+  FXbool nothing=true;
+  for (FXint f=0;f<FILE_NTYPES;f++){
+    if (mode[f]!=FILE_NONE) {
+      nothing=false;
+      break;
+      }
+    }
+
+  // If no operation was specified, bail out
+  if(nothing) {
+    printf("Error: No output conversion specified\n");
+    return false;
+    }
+
+  // Check if we have to tools to do the request operations
+  for (FXint f=0;f<FILE_NTYPES;f++){
+    if (mode[f]!=FILE_NONE) {
+      if (!tools.check(f,mode[f]))
+        return false;
+      }
+    }
+
+  // Make sure source has been specified
+  if (source.empty()) {
+    printf("Error: Missing argument source directory.\n");
+    return false;
+    }
+
+  // Make sure source exists
+  if (!FXStat::exists(source) || !FXStat::isDirectory(source)){
+    printf("Error: source is not a directory\n");
+    return false;
+    }
+
+  // If no target is specified, we use the source directory instead
+  if (target.empty()) {
+    target=source;
+    }
+
+  // Check if source and target are the same directory
+  if (target==source){
+    printf("Destination directory same as source directory! Are you sure? ");
+    int answer = getc(stdin);
+    if (!(answer=='y' || answer=='Y')) {
+      printf("\n");
+      return false;
+      }
+    printf("\n");
+    }
+
+  // Check if target exists and is a directory
+  if (FXStat::exists(target) && !FXStat::isDirectory(target)){
+    printf("Error: destination is not a directory\n");
+    return false;
+    }
+
+  // Check if we have write permissions
+  if (!FXStat::isWritable(target)){
+    printf("Error: destination is not writable\n");
+    return false;
+    }
+
+  // Success!
+  return true;
+  }
+
+
+FXuint AudioConverter::getFileType(const FXString & path) const {
+  FXString extension = FXPath::extension(path);
+
+  if (comparecase(extension,"flac")==0 || comparecase(extension,"oga")==0)
+    return FILE_FLAC;
+  else if (comparecase(extension,"mp3")==0)
+    return FILE_MP3;
+  else if (comparecase(extension,"ogg")==0)
+    return FILE_OGG;
+  else if (comparecase(extension,"mp4")==0 || comparecase(extension,"m4a")==0)
+    return FILE_MP4;
+  else if (comparecase(extension,"mpc")==0)
+    return FILE_MPC;
+  else
+    return FILE_INVALID;
+  }
+
+
+void AudioConverter::stop() {
+  status=STATUS_ERROR;
+  }
+
+FXint AudioConverter::run() {
+  // Traverse into source directory
+  traverse(source);
+
+  // Wait untill all child processes are done
+  manager.waitall();
+
+  // Return success / failure
+  if (status==STATUS_OK)
+    return 0;
+  else
+    return -1;
+  }
+
 
 
 #if FOXVERSION < FXVERSION(1,7,22)
@@ -321,19 +910,6 @@ FXuint AudioConverter::traverse(const FXString & path) {
 #endif
 
 
-
-
-FXint AudioConverter::run() {
-  FXASSERT(!src_root.empty());
-  FXASSERT(!dst_root.empty());
-  status=STATUS_OK;
-  start_time=FXThread::time();
-  if (traverse(src_root)==0)
-    return -1;
-  else
-    return 0;
-  }
-
 FXuint AudioConverter::enter(const FXString & /*path*/) {
   return status;
   }
@@ -342,318 +918,60 @@ FXuint AudioConverter::leave(const FXString & /*path*/) {
   return status;
   }
 
-FXbool AudioConverter::make_path(const FXString & path) const{
-  if (dryrun)
-    fxmessage("makepath: %s\n",path.text());
-  else
-    return gm_make_path(path);
-
-  return true;
-  }
-
-void AudioConverter::cleanup(const FXString & out) {
-  if (FXStat::modified(out)>out_time) {
-    fxmessage("remove %s\n",out.text());
-    FXFile::remove(out);
-    }
-  out_time=0;
-  }
-
-FXbool AudioConverter::update_destination(const FXString & in,const FXString & out){
-  if (in!=out && FXStat::exists(out)) {
-    out_time = FXStat::modified(out);
-    if (overwrite || FXStat::modified(in)>out_time)
-      return true;
-    else {
-      fxmessage("Existing: %s\n",out.text());
-      return false;
-      }
-    }
-  else {
-    out_time=0;
-    }
-  return true;
-  }
-
-FXbool AudioConverter::check_destination(const FXString & in,const FXString & out){
-  if (in==out) {
-    fxmessage("Error: source and destination are the same %s\n",out.text());
-    return false;
-    }
-  return true;
-  }
-
-
-FXbool AudioConverter::format_destination(const FXString & in,FXString & out,FXuint to) {
-  if (rename) {
-    if (!src_tag.loadTag(in)) {
-      fxmessage("Error: failed to load tag from file %s\n",in.text());
-      return false;
-      }
-
-    FXString path = FXPath::expand(format_template);
-
-    // Make sure its absolute
-    if (!FXPath::isAbsolute(path))
-        path = FXPath::absolute(dst_root,path);
-
-    // Simplify
-    path = FXPath::simplify(path);
-
-    // Format name based on tag
-    out  = GMFilename::format(src_tag,path,format_strip,format_options,format_codec);
-
-    // Append file extension
-    if (to==FILE_COPY)
-      out += "." + FXPath::extension(in);
-    else
-      out += tools.extension(to);
-
-    out_path = FXPath::directory(out);
-    }
-  else {
-    FXString path = FXPath::directory(in);
-    if (path!=src_root)
-      out_path = FXPath::absolute(dst_root,FXPath::relative(src_root,path));
-    else
-      out_path = dst_root;
-
-    if (to==FILE_COPY)
-      out = out_path + PATHSEPSTRING + FXPath::name(in);
-    else
-      out = out_path + PATHSEPSTRING + FXPath::title(in) + tools.extension(to);
-    }
- return true;
- }
-
-
-FXuint AudioConverter::convert_recode(FXuint,FXuint to,const FXString & in) {
-  FXString out;
-
-  // Get the destination filename
-  if (!format_destination(in,out,to)) return STATUS_ERROR;
-
-  /// Check if destination exists and needs updating
-  if (!update_destination(in,out)) return STATUS_OK;
-
-  fxmessage("convert (recode):\n");
-  fxmessage("  from: %s\n",in.text());
-  fxmessage("    to: %s\n",out.text());
-
-  /// Make sure destination exists
-  if (!make_path(out_path)) return STATUS_ERROR;
-
-  /// convert
-  if (!tools.encode(to,in,out)) return STATUS_ERROR;
-
-  return STATUS_OK;
-  }
-
-
-FXuint AudioConverter::convert_direct(FXuint from,FXuint to,const FXString & in) {
-  FXString out;
-
-  // Get the destination filename
-  if (!format_destination(in,out,to)) return STATUS_ERROR;
-
-  /// Make sure in and out are not the same
-  if (!check_destination(in,out)) return STATUS_ERROR;
-
-  /// Experimental
-  // if (from==FILE_FLAC && to==FILE_OGG)
-  //  copy_folder_cover(from,to,in);
-
-  /// Check if destination exists and needs updating
-  if (!update_destination(in,out)) return STATUS_OK;
-
-  fxmessage("convert (direct):\n");
-  fxmessage("  from: %s\n",in.text());
-  fxmessage("    to: %s\n",out.text());
-
-  /// Make sure destination exists
-  if (!make_path(out_path)) return STATUS_ERROR;
-
-  /// convert
-  if (!tools.encode(to,in,out)) return STATUS_ERROR;
-
-  /// Tags
-  if ((from!=to) && !(from==FILE_FLAC && to==FILE_OGG)) {
-    if (!copy_tags(in,out)) return STATUS_ERROR;
-    }
-
-  return STATUS_OK;
-  }
-
-
-FXuint AudioConverter::convert_indirect(FXuint from,FXuint to,const FXString & in) {
-  FXString out;
-
-  // Get the destination filename
-  if (!format_destination(in,out,to)) return STATUS_ERROR;
-
-  /// Make sure in and out are not the same
-  if (!check_destination(in,out)) return STATUS_ERROR;
-
-  /// Bail out if out exists
-  if (!update_destination(in,out)) return STATUS_OK;
-
-  fxmessage("convert (indirect):\n");
-  fxmessage("  from: %s\n",in.text());
-  fxmessage("   via: %s\n",tmp_file.text());
-  fxmessage("    to: %s\n",out.text());
-
-  /// convert to wav
-  if (!tools.decode(from,in,tmp_file)) goto error;
-
-  /// Make sure destination exists
-  if (!make_path(out_path)) goto error;
-
-  /// convert
-  if (!tools.encode(to,tmp_file,out)) goto error;
-
-  /// Tags
-  if (!copy_tags(in,out)) goto error;
-
-  /// Remove Temp File
-  FXFile::remove(tmp_file);
-  return STATUS_OK;
-error:
-  FXFile::remove(tmp_file);
-  cleanup(out);
-  return STATUS_ERROR;
-  }
-
-
-
-FXuint AudioConverter::convert(FXuint from,FXuint to,const FXString & in) {
-  if (from==to) {
-    if (tools.encoder_supports(to,from))
-      return convert_recode(from,to,in);
-    }
-  else if (tools.encoder_supports(to,from))
-    return convert_direct(from,to,in);
-  else
-    return convert_indirect(from,to,in);
-
-  return STATUS_ERROR;
-  }
-
-
-FXuint AudioConverter::copy(const FXString & in) {
-  FXString out;
-
-  // Get the destination filename
-  if (!format_destination(in,out,FILE_COPY)) return STATUS_ERROR;
-
-  /// Bail out if out exists
-  if (!update_destination(in,out)) return STATUS_OK;
-
-  fxmessage("copy:\n");
-  fxmessage("  from: %s\n",in.text());
-  fxmessage("    to: %s\n",out.text());
-
-  /// Make sure destination exists
-  if (!make_path(out_path)) return STATUS_ERROR;
-
-  /// Copy
-  if (!copy_files(in,out)) return STATUS_ERROR;
-
-  return STATUS_OK;
-  }
-
-
-FXbool AudioConverter::copy_files(const FXString & in,const FXString & out) const {
-  if (dryrun)
-    fxmessage("copy '%s' to '%s'\n",in.text(),out.text());
-  else
-    return FXFile::copyFiles(in,out,true);
-
-  return true;
-  }
-
-FXbool AudioConverter::copy_tags(const FXString & in,const FXString & out) {
-  GMTrack dst_tag;
-  if (dryrun) {
-    fxmessage("copy tags\n");
-    }
-  else {
-    // In case of renames, we already loaded the tag
-    if (!rename)
-        src_tag.loadTag(in);
-
-    dst_tag.loadTag(out);
-    if (src_tag.title!=dst_tag.title){
-      src_tag.saveTag(out);
-      }
-    }
-  return true;
-  }
-
-
-FXbool AudioConverter::copy_folder_cover(FXuint /*from*/,FXuint /*to*/,const FXString & in) {
-  if (dryrun) {
-    fxmessage("copy folder cover\n");
-    return true;
-    }
-  else {
-    GMCover * cover = GMCover::fromTag(in);
-    if (cover) {
-
-      FXString out = out_path + PATHSEPSTRING + "cover" + cover->fileExtension();
-
-      if (!FXStat::exists(out)) {
-
-        /// Make sure destination exists
-        if (!make_path(out_path)) return false;
-
-        /// Save the cover
-        cover->save(out);
-        }
-      }
-    }
-  return true;
-  }
-
-
 FXuint AudioConverter::visit(const FXString & path) {
-  FXString extension = FXPath::extension(path);
-  FXuint dst_file,src_file;
+  FXuint filetype = getFileType(path);
+  if (filetype!=FILE_INVALID) {
+    switch(mode[filetype]) {
+      case FILE_FLAC:
+      case FILE_MP3 :
+      case FILE_OGG :
+      case FILE_MP4 :
+      case FILE_MPC : if (mode[filetype]==filetype) {
+                        if (tools.encoder_supports(mode[filetype],filetype))
+                          manager.appendTask(new RecodeTask(this,path,filetype),dryrun);
+                        else
+                          stop();
+                        }
+                      else if (tools.encoder_supports(mode[filetype],filetype) && canDirectConvert(path,filetype)) {
+                        manager.appendTask(new DirectTask(this,path,filetype,mode[filetype]),dryrun);
+                        }
+                      else {
+                        manager.appendTask(new IndirectTask(this,path,filetype,mode[filetype]),dryrun);
+                        }
+                      break;
 
-  /// Prevent from converting files that are the output of our own conversion
-  /// Probably not needed..
-  if (FXStat::modified(path)>start_time){
-    fxmessage("Source may have been generated by us. Skipping %s\n",path.text());
-    return status;
-    }
-
-  if (comparecase(extension,"flac")==0 || comparecase(extension,"oga")==0)
-    src_file = FILE_FLAC;
-  else if (comparecase(extension,"mp3")==0)
-    src_file = FILE_MP3;
-  else if (comparecase(extension,"ogg")==0)
-    src_file = FILE_OGG;
-  else if (comparecase(extension,"mp4")==0 || comparecase(extension,"m4a")==0)
-    src_file = FILE_MP4;
-  else if (comparecase(extension,"mpc")==0)
-    src_file = FILE_MPC;
-  else
-    src_file = FILE_INVALID;
-
-  /// Extension not recognized.
-  if (src_file==FILE_INVALID){
-    return status;
-    }
-
-  dst_file=mode[src_file];
-  switch(dst_file){
-    case FILE_FLAC:
-    case FILE_MP3 :
-    case FILE_OGG :
-    case FILE_MP4 :
-    case FILE_MPC : status=convert(src_file,dst_file,path); break;
-    case FILE_COPY: status=copy(path); break;
-    case FILE_NONE: break;
-    default       : fxmessage("Unexpected destination target: %d\n",dst_file); status=STATUS_ERROR; break;
+      case FILE_COPY: manager.appendTask(new CopyTask(this,path)); break;
+      case FILE_NONE: break;
+      default       : FXASSERT(0); stop(); break;
+      }
     }
   return status;
   }
+
+
+FXbool AudioConverter::canDirectConvert(const FXString & path,FXuint filetype) {
+
+  // Should we use the direct convert
+  if (nodirect)
+    return false;
+
+  // oggenc can't handle flac files starting with a ID3v2 tag.
+  if (filetype==FILE_FLAC && mode[filetype]==FILE_OGG){
+    FXchar buffer[4]={0};
+    FXFile file;
+    if (file.open(path)) {
+      if (file.readBlock(buffer,4)==4) {
+        if (buffer[0]=='f' && buffer[1]=='L' && buffer[2]=='a' && buffer[3]=='C'){
+          return true;
+          }
+        }
+      }
+    printf("Info: found flac file with possible id3v2 tag, forcing indirect conversion\n");
+    // couldn't verify it is really a flac file.
+    return false;
+    }
+
+  // It's ok.
+  return true;
+  }
+

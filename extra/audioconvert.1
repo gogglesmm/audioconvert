@@ -1,4 +1,4 @@
-.TH audioconvert 1 "28 January 2011"
+.TH audioconvert 1 "29 March 2012"
 .SH NAME
 audioconvert \- An audio-file copying and conversion tool.
 .SH SYNOPSIS
@@ -11,7 +11,7 @@ directory tree and store them with the same relative path in the
 .B destination
 directory. A typical use case is where you have your music files in a lossless format (FLAC) and need to have them available for a portable device in a lossy format (Ogg Vorbis).
 .PP
-For each file type you can set the desired action to be performed (or to be ignored) allow for mixed operations. For example, If your portable device supports ogg and mp3, you can choose to convert flac to ogg vorbis and copy the mp3 files without conversion.
+For each file type you can set the desired action to be performed (or to be ignored) allowing for mixed operations. For example, If your portable device supports ogg and mp3, you can choose to convert flac to ogg vorbis and copy the mp3 files without conversion.
 .SH OPTIONS
 .I Output Action
 For each supported file type a desired action may be specified. The following actions are supported:
@@ -109,6 +109,9 @@ Lower case fields in filenames
 .I Misc
 .RS
 .TP
+.BI \-j\  count
+Specificy maximum number of parallel tasks (default is 1). Only decoding and encoding are done in parallel.
+.TP
 .B \-n, \-\-dry-run
 Print operations instead of performing
 .TP
@@ -117,6 +120,9 @@ Suppress Output Messages
 .TP
 .B \-\-overwrite
 Force overwriting existing files
+.TP
+.B \-\-no-direct
+Do not use direct conversion. Some encoders accepts other formats than wav. By default audioconvert tries to take advantage of this by skipping the decoding step and feeding the input directly. This option disables this and forces all formats to be decoded to wav first.
 .RE
 .I Other
 .RS

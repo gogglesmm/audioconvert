@@ -56,7 +56,7 @@ TaskManager::~TaskManager() {
 void TaskManager::appendTask(Task * task,FXbool dryrun) {
   if (dryrun) {
     if (task->run()) {
-      while(!task->done(true)) ;      
+      while(!task->done(true)) ;
       }
     delete task;
     }
@@ -221,6 +221,7 @@ protected:
   FXbool target_format();
   FXbool target_check();
   FXbool target_update();
+  FXbool target_make_path();
   FXbool copy_tags();
 protected:
   FXbool execute(const FXString & command);
@@ -335,6 +336,17 @@ FXbool BaseTask::copy_tags() {
   return true;
   }
 
+FXbool BaseTask::target_make_path() {
+  if (audioconvert->getDryRun()){
+    printf("mkdir -p %s\n",target_path.text());
+    return true;
+    }
+  else {
+    return gm_make_path(target_path);
+    }
+  }
+
+
 
 // Copies source to target
 class CopyTask : public BaseTask {
@@ -362,7 +374,7 @@ FXbool CopyTask::run() {
     return false;
     }
 
-  if (!gm_make_path(target_path)){
+  if (!target_make_path()){
     audioconvert->stop();
     return false;
     }
@@ -406,10 +418,12 @@ FXbool DirectTask::run() {
     return false;
     }
 
-  if (!gm_make_path(target_path)){
+
+  if (!target_make_path()){
     audioconvert->stop();
     return false;
     }
+
 
   printf("Info:   task: convert (direct)\n");
   printf("      source: %s\n",source.text());
@@ -459,10 +473,10 @@ void IndirectTask::clear() {
 
 FXbool IndirectTask::target_temp() {
   temp = FXPath::unique(target_path+PATHSEPSTRING"audioconvert.wav");
-  if (FXStat::exists(temp))
-    return false;
-  else
+  if (audioconvert->getDryRun())
     return true;
+  else    
+    return FXFile::create(temp);
   }
 
 
@@ -508,6 +522,11 @@ FXbool IndirectTask::run() {
     return false;
     }
 
+  if (!target_make_path()){
+    audioconvert->stop();
+    return false;
+    }
+
   if (!target_temp()){
     audioconvert->stop();
     return false;
@@ -544,11 +563,6 @@ FXbool RecodeTask::run() {
     }
 
   if (!target_update()){
-    return false;
-    }
-
-  if (!gm_make_path(target_path)){
-    audioconvert->stop();
     return false;
     }
 

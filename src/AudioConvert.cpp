@@ -475,7 +475,7 @@ FXbool IndirectTask::target_temp() {
   temp = FXPath::unique(target_path+PATHSEPSTRING"audioconvert.wav");
   if (audioconvert->getDryRun())
     return true;
-  else    
+  else
     return FXFile::create(temp);
   }
 
@@ -795,7 +795,7 @@ FXbool AudioConverter::init(FXint argc,FXchar *argv[]) {
 
   // Check if we have to tools to do the request operations
   for (FXint f=0;f<FILE_NTYPES;f++){
-    if (mode[f]!=FILE_NONE) {
+    if (mode[f]!=FILE_NONE && mode[f]!=FILE_COPY) {
       if (!tools.check(f,mode[f]))
         return false;
       }

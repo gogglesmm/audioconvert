@@ -612,6 +612,8 @@ FXuint AudioConverter::getMode(const FXchar * cstr){
     return FILE_MP4;
   else if (comparecase(m,"mpc")==0)
     return FILE_MPC;
+  else if (comparecase(m,"opus")==0)
+    return FILE_OPUS;		
   else if (comparecase(m,"copy")==0)
     return FILE_COPY;
   else if (comparecase(m,"none")==0 || comparecase(m,"off")==0)
@@ -859,6 +861,8 @@ FXuint AudioConverter::getFileType(const FXString & path) const {
     return FILE_MP4;
   else if (comparecase(extension,"mpc")==0)
     return FILE_MPC;
+  else if (comparecase(extension,"opus")==0)
+    return FILE_OPUS;	
   else
     return FILE_INVALID;
   }
@@ -940,7 +944,8 @@ FXuint AudioConverter::visit(const FXString & path) {
       case FILE_MP3 :
       case FILE_OGG :
       case FILE_MP4 :
-      case FILE_MPC : if (mode[filetype]==filetype) {
+      case FILE_MPC :
+      case FILE_OPUS: if (mode[filetype]==filetype) {
                         if (tools.encoder_supports(mode[filetype],filetype))
                           manager.appendTask(new RecodeTask(this,path,filetype),dryrun);
                         else

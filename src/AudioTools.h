@@ -26,21 +26,23 @@ enum {
   FILE_OGG     = 2,
   FILE_MP4     = 3,
   FILE_MPC     = 4,
+  FILE_OPUS    = 5,
 
   /* File Type Counter */
-  FILE_NTYPES  = 5,
+  FILE_NTYPES  = 6,
 
   /* Special Types */
-  FILE_NONE    = 5,
-  FILE_COPY    = 6,
-  FILE_INVALID = 7,
+  FILE_NONE    = 6,
+  FILE_COPY    = 7,
+  FILE_INVALID = 8,
 
   /* Bits */
   FILE_FLAC_BIT = (1<<FILE_FLAC),
   FILE_MP3_BIT  = (1<<FILE_MP3),
   FILE_OGG_BIT  = (1<<FILE_OGG),
   FILE_MP4_BIT  = (1<<FILE_MP4),
-  FILE_MPC_BIT  = (1<<FILE_MPC)
+  FILE_MPC_BIT  = (1<<FILE_MPC),
+  FILE_OPUS_BIT = (1<<FILE_OPUS)
   };
 
 enum {
@@ -54,7 +56,9 @@ enum {
   MP4_ENCODER   = 7,
   MPC_DECODER   = 8,
   MPC_ENCODER   = 9,
-  NTOOLS        = 10,
+  OPUS_DECODER  = 10,
+  OPUS_ENCODER  = 11,
+  NTOOLS        = 12,
   };
 
 struct ToolConfig {

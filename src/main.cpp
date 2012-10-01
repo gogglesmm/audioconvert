@@ -62,6 +62,7 @@ static void ac_print_help() {
             "     --mp3=<action>        Set desired action for mp3 files\n"
             "     --mp4=<action>        Set desired action for mp4/aac files\n"
             "     --mpc=<action>        Set desired action for mpc files\n"
+            "     --opus=<action>       Set desired action for opus files\n"
             "     --all=<action>        Set desired action for all file types\n"
             "\n"
             "     Actions:\n"
@@ -70,6 +71,7 @@ static void ac_print_help() {
             "         mp3 - Convert source file to mp3.\n"
             "         mp4 - Convert source file to mp4.\n"
             "         mpc - Convert source file to Musepack.\n"
+            "        opus - Convert source file to Opus.\n"
             "        copy - Copy source without conversion to destination.\n"
             "        none - Do nothing. Source file is skipped. (default)\n\n"
             );

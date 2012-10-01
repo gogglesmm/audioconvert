@@ -24,7 +24,8 @@ static const FXchar * filetype_extensions[]={
   ".mp3",
   ".ogg",
   ".m4a",
-  ".mpc"
+  ".mpc",
+  ".opus"
   };
 
 
@@ -84,6 +85,16 @@ AudioTools::AudioTools() : dryrun(false) {
   tools[MPC_ENCODER].quiet   = "--silent";
   tools[MPC_ENCODER].section = "mpc_encoder";
   tools[MPC_ENCODER].types   = FILE_FLAC_BIT;
+
+  tools[OPUS_DECODER].bin    = "opusdec";
+  tools[OPUS_DECODER].options= "";
+  tools[OPUS_DECODER].quiet  = "--quiet";
+  tools[OPUS_DECODER].section= "opus_decoder";
+
+  tools[OPUS_ENCODER].bin     = "opusenc";
+  tools[OPUS_ENCODER].options = "";
+  tools[OPUS_ENCODER].quiet   = "--quiet";
+  tools[OPUS_ENCODER].section = "opus_encoder";
   }
 
 static const FXuint decoder_map[]={
@@ -91,7 +102,8 @@ static const FXuint decoder_map[]={
   MP3_DECODER,
   OGG_DECODER,
   MP4_DECODER,
-  MPC_DECODER
+  MPC_DECODER,
+  OPUS_DECODER
   };
 
 static const FXuint encoder_map[]={
@@ -99,7 +111,8 @@ static const FXuint encoder_map[]={
   MP3_ENCODER,
   OGG_ENCODER,
   MP4_ENCODER,
-  MPC_ENCODER
+  MPC_ENCODER,
+  OPUS_ENCODER
   };
 
 const FXchar *  AudioTools::extension(FXuint type) const {
@@ -130,7 +143,8 @@ FXString AudioTools::runTool(FXuint tool,const FXString & input,const FXString &
     case MP3_DECODER :
     case MP3_ENCODER :
     case OGG_DECODER :
-    case OGG_ENCODER : cmd += input;
+    case OGG_ENCODER : 
+		       cmd += input;
                        cmd.append("\0-o\0",4);
                        cmd += output;
                        break;
@@ -140,6 +154,8 @@ FXString AudioTools::runTool(FXuint tool,const FXString & input,const FXString &
                        cmd += output + '\0' + input;
                        break;
 
+    case OPUS_DECODER:
+    case OPUS_ENCODER:	
     case MPC_DECODER :
     case MPC_ENCODER : cmd += input+'\0' +output;
                        break;

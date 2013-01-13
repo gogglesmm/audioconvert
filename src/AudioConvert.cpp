@@ -382,7 +382,7 @@ FXbool CopyTask::run() {
   printf("Info:   task: copy\n");
   printf("      source: %s\n",source.text());
   printf("      target: %s\n\n",target.text());
-  if (!audioconvert->getDryRun() && !FXFile::copyFiles(source,target)){
+  if (!audioconvert->getDryRun() && !FXFile::copyFiles(source,target,true)){
     audioconvert->stop();
     }
   // Don't add this task to the process manager

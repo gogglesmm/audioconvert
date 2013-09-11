@@ -74,6 +74,8 @@ static void ac_print_help() {
             "        opus - Convert source file to Opus.\n"
             "        copy - Copy source without conversion to destination.\n"
             "        none - Do nothing. Source file is skipped. (default)\n\n"
+            "\n"
+            "     --extract-cover       Extracts front cover into destination path\n" 
             );
   }
 

@@ -1,3 +1,9 @@
+0.4.3
+  - Fix copy task not overwriting files
+
+0.4.2
+  - Fix crash
+
 0.4.1
   - Fix temp file not being unique.
   - Fix target directory not being created.

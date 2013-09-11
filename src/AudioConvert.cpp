@@ -208,6 +208,8 @@ FXbool Task::execute(const FXString & cmd) {
 
 
 class BaseTask : public Task {
+private:
+  static FXDict target_paths;
 protected:
   AudioConverter * audioconvert;
 protected:
@@ -222,12 +224,17 @@ protected:
   FXbool target_check();
   FXbool target_update();
   FXbool target_make_path();
+  FXbool target_extract_cover();
+  FXbool target_clear_covers();
   FXbool copy_tags();
+  FXTime target_cover_modified();
 protected:
   FXbool execute(const FXString & command);
 public:
   BaseTask(AudioConverter* audioconvert,const FXString & in,FXuint from, FXuint to);
   };
+
+FXDict BaseTask::target_paths;
 
 BaseTask::BaseTask(AudioConverter* ac, const FXString & in,FXuint f,FXuint t) : audioconvert(ac),source(in),from(f),to(t) {
   }
@@ -291,6 +298,62 @@ FXbool BaseTask::target_update() {
     return true;
   else
     return false;
+  }
+
+
+FXTime BaseTask::target_cover_modified(){
+  FXTime m,recent=0;
+  FXString * covers=NULL;
+  FXint ncovers = FXDir::listFiles(covers,target_path,"cover.(jpg,jpeg,png,bmp,gif)",FXDir::NoDirs|FXDir::CaseFold); 
+  for (FXint i=0;i<ncovers;i++) {
+    m=FXStat::modified(target_path+PATHSEPSTRING+covers[i]);
+    if (m>0) recent=FXMAX(recent,m);
+    }
+  return recent;
+  }
+
+FXbool BaseTask::target_clear_covers() {
+  if (audioconvert->getExtractCover()){
+    FXString * covers=NULL;
+    printf("Clearing covers in %s\n",target_path.text());    
+    FXint ncovers = FXDir::listFiles(covers,target_path,"*.(jpg,jpeg,png,bmp,gif)",FXDir::NoDirs|FXDir::CaseFold); 
+    for (FXint i=0;i<ncovers;i++) {    
+      if (audioconvert->getDryRun())
+        printf("rm %s%s%s\n",target_path.text(),PATHSEPSTRING,covers[i].text());  
+      else {
+        printf("Removing %s%s%s\n",target_path.text(),PATHSEPSTRING,covers[i].text());
+        FXFile::remove(target_path+PATHSEPSTRING+covers[i]);
+        }
+      }
+    delete [] covers;
+    }
+  return true;
+  }
+
+FXbool BaseTask::target_extract_cover() {
+  if (audioconvert->getExtractCover() && FXStat::modified(source) > target_cover_modified() ){
+    if (audioconvert->getDryRun()) {
+      if (target_paths.find(target_path.text())==NULL) {
+        printf("(internal) extract cover to %s\n",target_path.text());
+        target_clear_covers();
+        }
+      target_paths.insert(target_path.text(),(void*)(FXival)1);
+      }
+    else {
+      GMCover * cover = GMCover::fromTag(source);
+      if (cover) {
+        target_clear_covers();
+        FXString coverfilename = target_path+PATHSEPSTRING+"cover"+cover->fileExtension();
+        printf("Extracting cover to %s\n",coverfilename.text());
+        if (!cover->save(coverfilename))
+          return false;
+        }
+      else {
+        printf("No cover in %s\n",source.text());
+        }
+      }
+    }
+  return true;
   }
 
 FXbool BaseTask::execute(const FXString & command) {
@@ -371,10 +434,19 @@ FXbool CopyTask::run() {
     }
 
   if (!target_update()){
+    if (!target_extract_cover()){
+      audioconvert->stop();
+      return false;
+      }
     return false;
     }
 
   if (!target_make_path()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_extract_cover()){
     audioconvert->stop();
     return false;
     }
@@ -415,11 +487,19 @@ FXbool DirectTask::run() {
     }
 
   if (!target_update()){
+    if (!target_extract_cover()){
+      audioconvert->stop();
+      return false;
+      }
     return false;
     }
 
-
   if (!target_make_path()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_extract_cover()){
     audioconvert->stop();
     return false;
     }
@@ -519,10 +599,19 @@ FXbool IndirectTask::run() {
     }
 
   if (!target_update()){
+    if (!target_extract_cover()){
+      audioconvert->stop();
+      return false;
+      }
     return false;
     }
 
   if (!target_make_path()){
+    audioconvert->stop();
+    return false;
+    }
+
+  if (!target_extract_cover()){
     audioconvert->stop();
     return false;
     }
@@ -591,6 +680,7 @@ AudioConverter::AudioConverter() :
   overwrite(false),
   nodirect(false),
   reformat(false),
+  extractcover(false),
   status(STATUS_OK),
   format_template("%P/%A?d< - disc %d>/%N %T"),
   format_strip("\'\\#~!\"$&();<>|`^*?[]/.:"),
@@ -689,8 +779,12 @@ FXbool AudioConverter::init(FXint argc,FXchar *argv[]) {
     else if (compare(argv[i],"--no-direct")==0) {
       nodirect=true;
       }
-    else if (compare(argv[i],"--rename")==0)
+    else if (compare(argv[i],"--extract-cover")==0){
+      extractcover=true;
+      }
+    else if (compare(argv[i],"--rename")==0) {
       reformat=true;
+      }
     else if (compare(argv[i],"--format-template=",9)==0) {
       reformat=true;
       format_template = FXString(argv[i]).after('=');

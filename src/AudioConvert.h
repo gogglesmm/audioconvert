@@ -83,6 +83,7 @@ protected:
   FXbool       overwrite;         // overwrite existing files
   FXbool       nodirect;          // don't use direct converter
   FXbool       reformat;          // apply formatting
+  FXbool       extractcover;      // extract cover from source
   FXuint       status;            // traverser status
   FXString     format_template;   // File format template
   FXString     format_strip;      // Characters to strip
@@ -119,6 +120,9 @@ public:
 
   // Return whether to apply formatting rules
   FXbool getFormat() const { return reformat; }
+
+  // Return whether to extract cover from source and place in target path
+  FXbool getExtractCover() const { return extractcover; }
 
   // Return complete command line to encode source into target
   FXString getEncoder(FXuint to,const FXString & source,const FXString & target) const { return tools.encode(to,source,target); }

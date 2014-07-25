@@ -40,11 +40,7 @@ public:
 
 class TaskManager {
 protected:
-#if FOXVERSION > FXVERSION(1,7,22)
   FXPtrListOf<Task> tasklist;
-#else
-  FXArray<Task*>    tasklist;
-#endif
   FXint             maxtask;
 protected:
   void updateTask(pid_t pid,FXint status);
@@ -66,12 +62,7 @@ public:
   };
 
 
-
-#if FOXVERSION > FXVERSION(1,7,22)
 class AudioConverter : public FXDirVisitor {
-#else
-class AudioConverter {
-#endif
 protected:
   TaskManager manager;
   AudioTools  tools;
@@ -93,9 +84,6 @@ protected:
   FXuint enter(const FXString & path);
   FXuint leave(const FXString & path);
   FXuint visit(const FXString & path);
-#if FOXVERSION < FXVERSION(1,7,22)
-  FXuint traverse(const FXString& path);
-#endif
 protected:
   FXuint getMode(const FXchar*);
   void initConfig();

@@ -120,7 +120,7 @@ const FXchar *  AudioTools::extension(FXuint type) const {
   }
 
 FXbool AudioTools::encoder_supports(FXuint type,FXuint desired) const {
-  if ((tools[encoder_map[type]].types&(1<<desired))==(1<<desired))
+  if ((tools[encoder_map[type]].types&(1u<<desired))==(1u<<desired))
     return true;
   else
     return false;

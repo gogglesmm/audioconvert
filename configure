@@ -56,9 +56,6 @@ for arg in $@; do
     --prefix=*)
       PREFIX=${arg#*=}
       ;;
-    --with-fox17*)
-      FOX17=1  
-      ;;
     --fox-prefix=*)
       FOX_PREFIX=${arg#*=}
       pkgconfig_add_path $FOX_PREFIX
@@ -122,16 +119,10 @@ echo "#define BUILD_TIME __TIME__"              >> src/acconfig.h
 
 # Find Libraries
 #------------------------
-if [ $FOX17 -eq 1 ] ; then
-  add_required_package "fox17 >= 1.7" "fox"
-else
-  add_required_package "fox >= 1.6" "fox"
-fi
+add_required_package "fox17 >= 1.7.48" "fox"
 check_reswrap
 check_foxversion
-
-
-add_required_package "taglib >= 1.7" "taglib"
+add_required_package "taglib >= 1.9" "taglib"
 
 
 PKG_LDFLAGS=$(pkg-config --libs-only-L $PACKAGES)

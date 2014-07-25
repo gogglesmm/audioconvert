@@ -31,17 +31,7 @@
 
 
 FXbool gm_make_path(const FXString & path,FXuint perm=FXIO::OwnerFull|FXIO::GroupFull|FXIO::OtherFull) {
-#if FOXVERSION < FXVERSION(1,7,0)
-  if(!path.empty()){
-    if(FXStat::isDirectory(path)) return true;
-    if(gm_make_path(FXPath::upLevel(path),perm)){
-      if(FXDir::create(path,perm)) return true;
-      }
-    }
-  return false;
-#else
   return FXDir::createDirectories(path,perm);
-#endif
   }
 
 
@@ -209,7 +199,7 @@ FXbool Task::execute(const FXString & cmd) {
 
 class BaseTask : public Task {
 private:
-  static FXDict target_paths;
+  static FXDictionary target_paths;
 protected:
   AudioConverter * audioconvert;
 protected:
@@ -234,7 +224,7 @@ public:
   BaseTask(AudioConverter* audioconvert,const FXString & in,FXuint from, FXuint to);
   };
 
-FXDict BaseTask::target_paths;
+FXDictionary BaseTask::target_paths;
 
 BaseTask::BaseTask(AudioConverter* ac, const FXString & in,FXuint f,FXuint t) : audioconvert(ac),source(in),from(f),to(t) {
   }
@@ -333,11 +323,11 @@ FXbool BaseTask::target_clear_covers() {
 FXbool BaseTask::target_extract_cover() {
   if (audioconvert->getExtractCover() && FXStat::modified(source) > target_cover_modified() ){
     if (audioconvert->getDryRun()) {
-      if (target_paths.find(target_path.text())==NULL) {
+      if (!target_paths.has(target_path)) {
         printf("(internal) extract cover to %s\n",target_path.text());
         target_clear_covers();
         }
-      target_paths.insert(target_path.text(),(void*)(FXival)1);
+      target_paths.insert(target_path,(void*)(FXival)1);
       }
     else {
       GMCover * cover = GMCover::fromTag(source);
@@ -729,11 +719,7 @@ void AudioConverter::initConfig() {
   if (!config.empty()){
     printf("Info: Found config %s\n",config.text());
     FXSettings settings;
-#if FOXVERSION < FXVERSION(1,7,25)
-    if (settings.parseFile(config,true)) {
-#else
     if (settings.parseFile(config)) {
-#endif
       tools.load_rc(settings);
       format_template = settings.readStringEntry("format","template",format_template.text());
       format_strip    = settings.readStringEntry("format","strip",format_strip.text());
@@ -810,11 +796,7 @@ FXbool AudioConverter::init(FXint argc,FXchar *argv[]) {
       }
     else if (compare(argv[i],"-j")==0) {
       if ((i+1)<argc) {
-#if FOXVERSION < FXVERSION(1,7,0)
-        FXint max = FXMAX(1,FXIntVal(argv[i+1]));
-#else
         FXint max = FXMAX(1,FXString(argv[i+1]).toInt());
-#endif
         printf("Info: Using maximum %d parallel tasks\n",max);
         manager.setMaxTasks(max);
         i+=1;
@@ -826,6 +808,10 @@ FXbool AudioConverter::init(FXint argc,FXchar *argv[]) {
       }
     else if (compare(argv[i],"--ogg=",6)==0){
       if ((mode[FILE_OGG]=getMode(argv[i]))==FILE_INVALID)
+        return false;
+      }
+    else if (compare(argv[i],"--opus=",7)==0){
+      if ((mode[FILE_OPUS]=getMode(argv[i]))==FILE_INVALID)
         return false;
       }
     else if (compare(argv[i],"--mp3=",6)==0){
@@ -979,47 +965,6 @@ FXint AudioConverter::run() {
   else
     return -1;
   }
-
-
-
-#if FOXVERSION < FXVERSION(1,7,22)
-FXuint AudioConverter::traverse(const FXString & path) {
-  FXString * dirs=NULL;
-  FXString * files=NULL;
-  FXuint code;
-  FXint no;
-
-  code=enter(path);
-  if (code!=STATUS_OK) return code;
-
-  no = FXDir::listFiles(dirs,path,"*",FXDir::NoFiles|FXDir::NoParent);
-  if (no) {
-    for (FXint i=0;i<no;i++) {
-      code = traverse(path+PATHSEPSTRING+dirs[i]);
-      if (code!=STATUS_OK) {
-        delete [] dirs;
-        return code;
-        }
-      }
-    delete [] dirs;
-    }
-
-  no = FXDir::listFiles(files,path,"*",FXDir::NoDirs);
-  if (no) {
-    for (FXint i=0;i<no;i++) {
-      code=visit(path+PATHSEPSTRING+files[i]);
-      if (code!=STATUS_OK) {
-        delete [] files;
-        return code;
-        }
-      }
-    delete [] files;
-    }
-
-  return leave(path);
-  }
-
-#endif
 
 
 FXuint AudioConverter::enter(const FXString & /*path*/) {

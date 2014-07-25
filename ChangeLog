@@ -1,3 +1,7 @@
+0.4.4
+  - Drop FOX 1.6
+  - Fix missing --opus command line argument.
+
 0.4.3
   - Fix copy task not overwriting files
 
